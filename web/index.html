@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Beeline — floor 16, live</title>
 <link rel="stylesheet" href="/fonts/nunito.css" />
-<link rel="stylesheet" href="/style.css?v=4" />
+<link rel="stylesheet" href="/style.css?v=5" />
 <script>try{document.documentElement.dataset.theme=localStorage.getItem('beeline-theme')||'light';}catch(e){document.documentElement.dataset.theme='light';}</script>
 </head>
 <body>
@@ -49,13 +49,29 @@
     <div class="cap">Scan to join</div>
     <div class="url" id="qr-url">/join</div>
   </div>
+
+  <!-- guided, self-narrating demo overlay (lower-third captions) -->
+  <div id="guide" hidden>
+    <div class="guide-inner">
+      <div class="guide-top">
+        <span class="guide-kicker">Guided demo</span>
+        <span class="guide-step" id="guide-step"></span>
+      </div>
+      <div class="guide-cap" id="guide-cap" aria-live="polite"></div>
+      <div class="guide-bar"><div class="guide-bar-fill" id="guide-bar-fill"></div></div>
+      <div class="guide-controls">
+        <button id="guide-restart" class="guide-btn">Restart</button>
+        <button id="guide-skip" class="guide-btn">Skip</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- ============ SIDE PANEL : agents + intros ============ -->
 <div id="side">
   <div id="controls">
-    <button class="primary" id="btn-fill">Fill the room</button>
-    <button id="btn-demo">Play demo</button>
+    <button class="primary cta" id="btn-fill">See it in action</button>
+    <button id="btn-demo">Fill the room</button>
     <button id="btn-move">Move someone</button>
     <button id="btn-recharge">Tap recharging</button>
     <button id="btn-intro">Send a beeline</button>
@@ -114,6 +130,7 @@
         <input type="file" id="cfg-scan-file" accept="image/*" capture="environment" />
         <span>Choose or take a photo</span>
       </label>
+      <p class="cfg-note cfg-scan-note" id="cfg-scan-note" hidden>Camera needs the shared https link; you can still choose a photo.</p>
       <div id="cfg-scan-out"></div>
     </section>
 
@@ -126,6 +143,6 @@
   </div>
 </aside>
 
-<script src="/app.js?v=3"></script>
+<script src="/app.js?v=4"></script>
 </body>
 </html>

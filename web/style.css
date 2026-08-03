@@ -209,6 +209,66 @@ body {
 #matchcard .route b { color: var(--text); font-weight: 600; }
 
 /* ------------------------------------------------------------- *
+ * GUIDED DEMO — self-narrating lower-third captions
+ * Dark banner + white text so it stays legible on the light map
+ * and in a screen recording, regardless of theme.
+ * ------------------------------------------------------------- */
+#guide {
+  position: absolute; left: 50%; bottom: 30px; transform: translateX(-50%);
+  z-index: 6; width: min(620px, 60vw); pointer-events: none;
+}
+#guide[hidden] { display: none; }
+#guide .guide-inner {
+  background: rgba(18,19,26,.92); color: #fff;
+  border: 1px solid rgba(255,216,132,.28); border-radius: 14px;
+  padding: 13px 18px 12px; box-shadow: 0 16px 44px rgba(0,0,0,.42);
+  backdrop-filter: blur(6px);
+  opacity: 0; transform: translateY(10px);
+  transition: opacity .35s ease, transform .35s ease;
+}
+#guide.show .guide-inner { opacity: 1; transform: translateY(0); pointer-events: auto; }
+.guide-top {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 6px;
+}
+.guide-kicker {
+  font-size: 10px; letter-spacing: .16em; text-transform: uppercase;
+  color: #ffd884; font-weight: 700;
+}
+.guide-step { font-size: 11px; color: rgba(255,255,255,.6); font-variant-numeric: tabular-nums; }
+.guide-cap {
+  font-size: 18px; line-height: 1.4; font-weight: 600; color: #fff;
+  min-height: 2.6em; display: flex; align-items: center;
+}
+.guide-bar {
+  height: 4px; border-radius: 4px; background: rgba(255,255,255,.14);
+  overflow: hidden; margin-top: 10px;
+}
+.guide-bar-fill {
+  height: 100%; width: 0%; border-radius: 4px;
+  background: linear-gradient(90deg, #f5b544, #ffd884);
+}
+.guide-controls { display: flex; gap: 8px; margin-top: 11px; justify-content: flex-end; }
+.guide-btn {
+  font: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer;
+  padding: 6px 14px; border-radius: 8px;
+  background: rgba(255,255,255,.1); color: #fff;
+  border: 1px solid rgba(255,255,255,.22);
+  transition: background .15s ease, border-color .15s ease;
+}
+.guide-btn:hover { background: rgba(255,255,255,.2); border-color: rgba(255,216,132,.5); }
+#guide-restart { background: rgba(245,181,68,.9); color: #3a2b06; border-color: rgba(245,181,68,.9); }
+#guide-restart:hover { background: #ffd884; }
+@media (max-width: 900px) { #guide { width: 86vw; bottom: 16px; } .guide-cap { font-size: 16px; } }
+
+/* scan robustness note (camera needs https) */
+.cfg-scan-note {
+  margin-top: 10px; margin-bottom: 0;
+  color: var(--hold); font-size: 12px;
+}
+.cfg-scan-note[hidden] { display: none; }
+
+/* ------------------------------------------------------------- *
  * SIDE PANEL — agent activity + introductions
  * ------------------------------------------------------------- */
 #side {
@@ -226,6 +286,22 @@ button:hover { background: var(--hover); }
 button.primary { background: var(--accent); color: #3a2b06; border-color: var(--accent); font-weight: 700; }
 button.primary:hover { filter: brightness(1.06); }
 button.ghost { color: var(--dim); }
+
+/* the dominant call-to-action: full-width, larger, gently pulsing so a
+   first-time visitor knows where to click */
+button.cta {
+  flex: 1 0 100%;
+  padding: 13px 16px; font-size: 15px; letter-spacing: .01em;
+  border-radius: 10px;
+  box-shadow: 0 6px 18px rgba(245,181,68,.34);
+  animation: cta-pulse 2.4s ease-in-out infinite;
+}
+button.cta:hover { filter: brightness(1.06); animation: none; }
+@keyframes cta-pulse {
+  0%, 100% { box-shadow: 0 6px 18px rgba(245,181,68,.30); }
+  50%      { box-shadow: 0 6px 26px rgba(245,181,68,.55); }
+}
+@media (prefers-reduced-motion: reduce) { button.cta { animation: none; } }
 #meta { padding: 0 16px 14px; font-size: 11.5px; color: var(--dim); display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .chip-meta { border: 1px solid var(--line); border-radius: 20px; padding: 3px 10px; }
 .chip-meta b { color: var(--text); font-weight: 600; }

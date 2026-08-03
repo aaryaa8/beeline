@@ -356,6 +356,7 @@ let activePath = null;          // animated beeline
 const stats = { people: 0, open: 0, met: 0, intros: 0 };
 let LIVE = false;
 let es = null;
+let guideActive = false;   // true while the guided demo plays (see §8b)
 
 /* ------------------------------------------------------------------ *
  * 3. Canvas setup + transform
@@ -737,6 +738,9 @@ function setEnergy(rows) {
  * 7. Frame router (shared by live SSE + mock feed)
  * ------------------------------------------------------------------ */
 function ingest(kind, data) {
+  // While the guided demo runs, ignore live frames so the scripted story
+  // stays deterministic. Live resumes automatically once it ends.
+  if (guideActive && kind !== 'error') return;
   if (kind === 'graph') reconcilePeople(data.nodes || [], data.zones);
   else if (kind === 'stats') setStats(data);
   else if (kind === 'event') handleEvent(data);
@@ -831,6 +835,13 @@ const MOCK_TRACE_VETO = {
     { step: 'empath', detail: 'overlap too generic, vetoed', status: 'vetoed' },
   ],
 };
+const MOCK_TRACE_FEEDBACK = {
+  event: { type: 'feedback', payload: { id: 'a1' } }, ms: 8,
+  steps: [
+    { step: 'memory.write', detail: 'Priya tapped not-for-me on Dev' },
+    { step: 'empath', detail: 'downweight Dev + similar; next match shifts', status: 'approved' },
+  ],
+};
 
 function mockFill() {
   doReset();
@@ -884,6 +895,96 @@ function mockDemo() {
 }
 
 /* ------------------------------------------------------------------ *
+ * 8b. Guided, self-narrating demo — the centerpiece.
+ *     Reuses the mock sequence engine (mockFill / mockMove / mockRecharge
+ *     / mockIntro + the mock traces) so it needs no backend and is
+ *     deterministic, and overlays plain-language captions + a progress
+ *     bar so a viewer with no narration understands the pitch. Every
+ *     caption is synced to the actual beat it describes.
+ * ------------------------------------------------------------------ */
+let guideTimers = [];
+let guideRaf = 0;
+let guideStartAt = 0;
+let guideStarted = false;        // has the guided demo ever run this load
+let guideAutoTimer = null;
+
+// [atMs, caption, action] — the caption describes exactly what the action does.
+function guideBeats() {
+  return [
+    [0,     'People check in live. Each arrival is its own real-time event.',
+            () => mockFill()],
+    [3400,  'It remembers who is here and what each person needs versus offers.',
+            null],
+    [6800,  'Four agents decide who should meet whom. One just vetoed a match for being too generic.',
+            () => addTrace(MOCK_TRACE_VETO)],
+    [10200, 'As people move around, the live map keeps track of them across the floor.',
+            () => { mockMove(); setTimeout(() => { if (guideActive) mockMove(); }, 800); }],
+    [13600, 'Sofia is recharging, so it holds her introduction until she is ready.',
+            () => mockRecharge()],
+    [17000, 'A strong match lands. It draws a path: go this way, and say hi to Chen on the route.',
+            () => mockIntro()],
+    [22000, 'A thumbs-down teaches it, so the next suggestion shifts.',
+            () => { if (people.has('a7')) { people.get('a7').state = 'open'; recomputeOpen(); }
+                    addTrace(MOCK_TRACE_FEEDBACK); }],
+    [26000, 'Scan the QR in the corner to add yourself to the room.',
+            null],
+  ];
+}
+const GUIDE_TOTAL = 30000;   // total run length; last caption reads to the end
+
+function setGuideCaption(text, idx, total) {
+  const cap = document.getElementById('guide-cap');
+  const step = document.getElementById('guide-step');
+  if (cap) cap.textContent = text;
+  if (step) step.textContent = (idx + 1) + ' / ' + total;
+}
+function runGuideBar() {
+  cancelAnimationFrame(guideRaf);
+  const tick = () => {
+    const el = document.getElementById('guide-bar-fill');
+    if (!el) return;
+    const pct = Math.min(1, (performance.now() - guideStartAt) / GUIDE_TOTAL);
+    el.style.width = (pct * 100) + '%';
+    if (pct < 1 && guideActive) guideRaf = requestAnimationFrame(tick);
+  };
+  guideRaf = requestAnimationFrame(tick);
+}
+function clearGuideTimers() {
+  guideTimers.forEach(clearTimeout); guideTimers = [];
+  cancelAnimationFrame(guideRaf);
+}
+function startGuidedDemo() {
+  cancelAutoStart();
+  clearGuideTimers();
+  guideActive = true;
+  guideStarted = true;
+  const g = document.getElementById('guide');
+  if (g) { g.hidden = false; requestAnimationFrame(() => g.classList.add('show')); }
+  doReset();
+  const beats = guideBeats();
+  guideStartAt = performance.now();
+  beats.forEach(([at, cap, fn], i) => {
+    guideTimers.push(setTimeout(() => { setGuideCaption(cap, i, beats.length); if (fn) fn(); }, at));
+  });
+  guideTimers.push(setTimeout(finishGuidedDemo, GUIDE_TOTAL));
+  runGuideBar();
+}
+function finishGuidedDemo() {
+  // hold the closing caption + progress full; live frames resume.
+  clearGuideTimers();
+  guideActive = false;
+  const bar = document.getElementById('guide-bar-fill');
+  if (bar) bar.style.width = '100%';
+}
+function stopGuidedDemo() {
+  clearGuideTimers();
+  guideActive = false;
+  const g = document.getElementById('guide');
+  if (g) { g.classList.remove('show'); setTimeout(() => { g.hidden = true; }, 300); }
+}
+function cancelAutoStart() { if (guideAutoTimer) { clearTimeout(guideAutoTimer); guideAutoTimer = null; } }
+
+/* ------------------------------------------------------------------ *
  * 9. Live stream + controls
  * ------------------------------------------------------------------ */
 const post = (url, body) => fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) }).catch(() => {});
@@ -909,14 +1010,19 @@ function setMode(live) {
   if (live) connectLive(); else if (es) { es.close(); es = null; }
 }
 
-// wire buttons — in mock mode they drive the mock feed; in live they POST
-document.getElementById('btn-fill').onclick = () => LIVE ? post('/api/seed', { delay: 0.8 }) : mockFill();
-document.getElementById('btn-demo').onclick = () => LIVE ? post('/api/seed', { delay: 0.8 }) : mockDemo();
-document.getElementById('btn-move').onclick = () => LIVE ? mockMove() : mockMove(); // visual nudge either way
-document.getElementById('btn-recharge').onclick = () => LIVE ? post('/api/state', { id: 'a7', state: 'recharging' }) : mockRecharge();
-document.getElementById('btn-intro').onclick = () => LIVE ? post('/api/seed', { delay: 0.4 }) : mockIntro();
-document.getElementById('btn-reset').onclick = () => { LIVE ? post('/api/reset') : doReset(); };
-document.getElementById('btn-live').onclick = () => setMode(!LIVE);
+// wire buttons — in mock mode they drive the mock feed; in live they POST.
+// The dominant CTA launches the narrated guided demo (deterministic, no backend).
+document.getElementById('btn-fill').onclick = () => { cancelAutoStart(); startGuidedDemo(); };
+document.getElementById('btn-demo').onclick = () => { cancelAutoStart(); LIVE ? post('/api/seed', { delay: 0.8 }) : mockFill(); };
+document.getElementById('btn-move').onclick = () => { cancelAutoStart(); mockMove(); }; // visual nudge either way
+document.getElementById('btn-recharge').onclick = () => { cancelAutoStart(); LIVE ? post('/api/state', { id: 'a7', state: 'recharging' }) : mockRecharge(); };
+document.getElementById('btn-intro').onclick = () => { cancelAutoStart(); LIVE ? post('/api/seed', { delay: 0.4 }) : mockIntro(); };
+document.getElementById('btn-reset').onclick = () => { cancelAutoStart(); stopGuidedDemo(); LIVE ? post('/api/reset') : doReset(); };
+document.getElementById('btn-live').onclick = () => { cancelAutoStart(); setMode(!LIVE); };
+
+// guided-demo overlay controls
+document.getElementById('guide-restart').onclick = startGuidedDemo;
+document.getElementById('guide-skip').onclick = stopGuidedDemo;
 
 /* ------------------------------------------------------------------ *
  * 9b. Theme — light by default, dark on toggle, choice persisted.
