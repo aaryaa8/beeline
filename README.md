@@ -7,9 +7,11 @@ Built for the **Memory Meets Motion** hackathon (Frontier Tower, San Francisco).
 > Most networking apps tell you two people are *similar*. Beeline tells you who
 > can *introduce* you, and walks you there.
 
-- **Live demo:** open the link in the submission (a public HTTPS URL). Press the
-  main button to watch a self-narrating 90-second demo, or scan the on-screen QR
-  to add yourself from your phone.
+- **Try it (permanent, no setup):** https://aaryaa8.github.io/beeline/ — a
+  self-narrating demo that plays itself, so you can watch the whole idea in 90
+  seconds with no one narrating.
+- **Live interactive app:** run it locally (below) or via the public tunnel for
+  full features — check in from your phone, scan a room, reconfigure the areas.
 - **Code:** https://github.com/aaryaa8/beeline
 
 ---
