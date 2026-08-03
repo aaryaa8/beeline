@@ -39,6 +39,16 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* On a projector or laptop (wide) the map takes the flexible column and the
+   panel is a fixed 420px, which is the demo target. Below 900px (a phone, or a
+   cramped preview) that would crush the floor plan, so stack instead: map on
+   top with a real height, panel scrolling beneath. The map is never squeezed. */
+@media (max-width: 900px) {
+  body { grid-template-columns: 1fr; grid-template-rows: 62vh 1fr; overflow: auto; }
+  #map { min-height: 62vh; }
+  #side { border-left: none; border-top: 1px solid var(--line); }
+}
+
 /* ------------------------------------------------------------- *
  * MAP (the headline)
  * ------------------------------------------------------------- */
