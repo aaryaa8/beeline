@@ -16,8 +16,11 @@ drop-in that degrades to exactly this template.
 Run: cd /Users/aaryaakamdar/Desktop/overlap && .venv/bin/python scripts/test_agents.py
 """
 import os
-# Force the deterministic template path for the icebreaker before config loads.
-os.environ.pop("ANTHROPIC_API_KEY", None)
+# Force the deterministic template path for the icebreaker regardless of .env.
+# Setting it empty (not popping) matters: config.py runs load_dotenv(), which
+# would re-read the key from .env if the var were merely absent. load_dotenv does
+# not override an already-set var, so an empty string wins and cfg.has_llm is False.
+os.environ["ANTHROPIC_API_KEY"] = ""
 
 import asyncio
 import sys

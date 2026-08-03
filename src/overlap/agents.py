@@ -192,7 +192,9 @@ def icebreaker_local(memory: Memory, proposal: dict[str, Any]) -> str:
     try:
         import anthropic
 
-        client = anthropic.Anthropic(api_key=cfg.anthropic_api_key)
+        # Tight timeout: a slow or rate-limited Anthropic call must never stall a
+        # live delivery. On timeout we fall through to the instant template below.
+        client = anthropic.Anthropic(api_key=cfg.anthropic_api_key, timeout=8.0, max_retries=0)
         complements = proposal.get("complements") or []
         specific = proposal.get("specific_topics") or []
         connector = proposal.get("connector")
