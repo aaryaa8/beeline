@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "overlap",
+      "runtimeExecutable": ".venv/bin/uvicorn",
+      "runtimeArgs": ["overlap.server:app", "--app-dir", "src", "--port", "8113", "--reload"],
+      "port": 8113
+    }
+  ]
+}
