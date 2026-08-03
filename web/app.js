@@ -263,24 +263,89 @@ function renderQR(text) {
 
 /* ------------------------------------------------------------------ *
  * 1. Floor plan geometry — logical 1000 x 680 space, letterboxed.
+ *    The floor plan is now built from whatever areas the backend
+ *    reports (SSE graph frame -> payload.zones). We compute an auto
+ *    grid for any 1..8 areas so the map re-lays-out when a venue is
+ *    reconfigured, scanned, or optimized. Nothing here is hardcoded to
+ *    a specific venue.
  * ------------------------------------------------------------------ */
-const ZONE_LIST = ['Window', 'Coffee', 'Stage', 'Cafe'];
-const ZONES = {
-  Window: { x: 58,  y: 92,  w: 402, h: 250 },
-  Stage:  { x: 540, y: 92,  w: 402, h: 250 },
-  Coffee: { x: 58,  y: 372, w: 402, h: 250 },
-  Cafe:   { x: 540, y: 372, w: 402, h: 250 },
-};
+const FLOOR = { x: 34, y: 70, w: 936, h: 566 };   // inner boundary of the floor
+let ZONE_LIST = [];                                // current area names (ordered)
+let ZONES = {};                                    // name -> { x, y, w, h }
+
+// Fallback set only for offline mock mode; live mode reads real areas.
+const MOCK_ZONES = ['Window', 'Coffee', 'Stage', 'Cafe'];
+
+// Auto-grid: columns = 2 for 1..4 areas (1 for a single area), else
+// ceil(sqrt(n)). Rectangles fill the floor with a gap; a short final row
+// is centered so the plan stays balanced.
+function layoutZones(names) {
+  const clean = (names || []).map(s => String(s).trim()).filter(Boolean).slice(0, 8);
+  ZONE_LIST = clean.length ? clean : ['Room'];
+  const n = ZONE_LIST.length;
+  const cols = n <= 4 ? Math.min(2, n) : Math.ceil(Math.sqrt(n));
+  const rows = Math.ceil(n / cols);
+  const gap = 22, padX = 26, padY = 24;
+  const innerX = FLOOR.x + padX, innerY = FLOOR.y + padY;
+  const innerW = FLOOR.w - padX * 2, innerH = FLOOR.h - padY * 2;
+  const cw = (innerW - gap * (cols - 1)) / cols;
+  const ch = (innerH - gap * (rows - 1)) / rows;
+  const next = {};
+  ZONE_LIST.forEach((name, i) => {
+    const r = Math.floor(i / cols), c = i % cols;
+    const inRow = Math.min(cols, n - r * cols);           // cells in this row
+    const rowOff = (cols - inRow) * (cw + gap) / 2;        // center a short row
+    next[name] = { x: innerX + rowOff + c * (cw + gap), y: innerY + r * (ch + gap), w: cw, h: ch };
+  });
+  ZONES = next;
+}
+function zonesEqual(names) {
+  const a = (names || []).map(s => String(s).trim()).filter(Boolean);
+  if (a.length !== ZONE_LIST.length) return false;
+  return a.every((z, i) => z === ZONE_LIST[i]);
+}
+// A person may report a zone that no longer exists; fall back gracefully.
+function zoneOr(z) { return ZONES[z] ? z : ZONE_LIST[0]; }
+function zoneRect(z) { return ZONES[zoneOr(z)]; }
+
 const STATE_COLOR = { open: '#ffd36b', 'heads-down': '#5b8def', recharging: '#b98a3e', 'in-flow': '#b98cf0' };
 const STATE_GLOW  = { open: 0.9, 'heads-down': 0.5, recharging: 0.28, 'in-flow': 0.6 };
 
-function zoneCenter(z) { const r = ZONES[z] || ZONES.Stage; return { x: r.x + r.w / 2, y: r.y + r.h / 2 }; }
+function zoneCenter(z) { const r = zoneRect(z); return { x: r.x + r.w / 2, y: r.y + r.h / 2 }; }
 function randInZone(z, seed) {
-  const r = ZONES[z] || ZONES.Stage, pad = 52;
-  // deterministic-ish jitter so a dot keeps a stable-ish spot per reflow
-  const rnd = () => Math.random();
-  return { x: r.x + pad + rnd() * (r.w - pad * 2), y: r.y + pad + rnd() * (r.h - pad * 2) };
+  const r = zoneRect(z);
+  // padding scales with the cell so people sit inside any grid size, with
+  // extra room at the top for the area label.
+  const px = Math.max(18, Math.min(46, r.w * 0.15));
+  const pyTop = Math.max(38, Math.min(58, r.h * 0.28));
+  const pyBot = Math.max(16, Math.min(38, r.h * 0.14));
+  return { x: r.x + px + Math.random() * Math.max(1, r.w - px * 2),
+           y: r.y + pyTop + Math.random() * Math.max(1, r.h - pyTop - pyBot) };
 }
+
+/* Theme-aware palette for canvas-drawn elements (floor, areas, names).
+   State + path colors stay constant across themes; the honey accent carries. */
+const THEME_CANVAS = {
+  light: {
+    floorStroke: 'rgba(70,80,110,.28)',
+    zoneFill:    'rgba(70,90,150,0.045)',
+    zoneStroke:  'rgba(70,90,140,.22)',
+    zoneLabel:   'rgba(60,66,88,.78)',
+    zoneOpen:    'rgba(200,140,40,.85)',
+    nameText:    'rgba(40,44,58,.94)',
+    heatBase:    'rgba(230,160,50,',   // + alpha)
+  },
+  dark: {
+    floorStroke: 'rgba(120,130,160,.18)',
+    zoneFill:    'rgba(150,160,190,0.028)',
+    zoneStroke:  'rgba(140,150,185,.22)',
+    zoneLabel:   'rgba(180,190,215,.62)',
+    zoneOpen:    'rgba(255,211,107,.5)',
+    nameText:    'rgba(238,241,247,.92)',
+    heatBase:    'rgba(255,196,96,',   // + alpha)
+  },
+};
+let CV = THEME_CANVAS.light;
 
 /* ------------------------------------------------------------------ *
  * 2. State
@@ -328,14 +393,16 @@ function roundRect(x, y, w, h, r) {
 }
 
 function drawFloor() {
-  // outer boundary of floor 16
+  // outer boundary of the floor
   ctx.lineWidth = Math.max(1, TS(2));
-  ctx.strokeStyle = 'rgba(120,130,160,.18)';
-  roundRect(TX(34), TY(70), TS(936), TS(566), TS(18));
+  ctx.strokeStyle = CV.floorStroke;
+  roundRect(TX(FLOOR.x), TY(FLOOR.y), TS(FLOOR.w), TS(FLOOR.h), TS(18));
   ctx.stroke();
 
+  const labelPx = ZONE_LIST.length > 6 ? 15 : 19;
   for (const z of ZONE_LIST) {
     const r = ZONES[z];
+    if (!r) continue;
     // energy heat tint (stretch; degrades to flat if no energy frames)
     let heat = 0;
     if (energy && energy[z]) {
@@ -344,25 +411,23 @@ function drawFloor() {
       heat = Math.min(1, (e.open || 0) / 4) * 0.5 + Math.min(1, total / 6) * 0.15;
     }
     roundRect(TX(r.x), TY(r.y), TS(r.w), TS(r.h), TS(14));
-    ctx.fillStyle = heat > 0
-      ? `rgba(255,196,96,${0.05 + heat * 0.16})`
-      : 'rgba(150,160,190,0.028)';
+    ctx.fillStyle = heat > 0 ? `${CV.heatBase}${0.05 + heat * 0.16})` : CV.zoneFill;
     ctx.fill();
     ctx.lineWidth = Math.max(1, TS(1.4));
-    ctx.strokeStyle = 'rgba(140,150,185,.22)';
+    ctx.strokeStyle = CV.zoneStroke;
     ctx.stroke();
 
-    // zone label
-    ctx.fillStyle = 'rgba(180,190,215,.62)';
-    ctx.font = `700 ${TS(19)}px ui-sans-serif, system-ui`;
+    // area label
+    ctx.fillStyle = CV.zoneLabel;
+    ctx.font = `700 ${TS(labelPx)}px "Nunito", ui-sans-serif, system-ui`;
     ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
-    ctx.fillText(z.toUpperCase(), TX(r.x + 22), TY(r.y + 34));
-    // count of open people in zone
-    let openHere = 0; for (const p of people.values()) if (p.zone === z && p.state === 'open') openHere++;
+    ctx.fillText(z.toUpperCase(), TX(r.x + 20), TY(r.y + 30));
+    // count of open people in area
+    let openHere = 0; for (const p of people.values()) if (zoneOr(p.zone) === z && p.state === 'open') openHere++;
     if (openHere > 0) {
-      ctx.fillStyle = 'rgba(255,211,107,.5)';
-      ctx.font = `600 ${TS(12)}px ui-sans-serif, system-ui`;
-      ctx.fillText(openHere + ' open', TX(r.x + 22), TY(r.y + 52));
+      ctx.fillStyle = CV.zoneOpen;
+      ctx.font = `600 ${TS(12)}px "Nunito", ui-sans-serif, system-ui`;
+      ctx.fillText(openHere + ' open', TX(r.x + 20), TY(r.y + 48));
     }
   }
 }
@@ -429,7 +494,7 @@ function drawPath(now) {
   }
 }
 function label(text, x, y, color) {
-  ctx.font = `700 ${TS(12.5)}px ui-sans-serif, system-ui`;
+  ctx.font = `700 ${TS(12.5)}px "Nunito", ui-sans-serif, system-ui`;
   ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
   const w = ctx.measureText(text).width;
   ctx.fillStyle = 'rgba(8,9,13,.72)';
@@ -465,9 +530,9 @@ function drawPeople(now) {
     ctx.globalAlpha = grow; ctx.fill(); ctx.globalAlpha = 1; ctx.shadowBlur = 0;
 
     // name
-    ctx.font = `600 ${TS(12.5)}px ui-sans-serif, system-ui`;
+    ctx.font = `600 ${TS(12.5)}px "Nunito", ui-sans-serif, system-ui`;
     ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
-    ctx.fillStyle = 'rgba(238,241,247,.92)';
+    ctx.fillStyle = CV.nameText;
     ctx.fillText(p.label || p.id, px, py - r - TS(7));
   }
 }
@@ -485,7 +550,14 @@ function frame() {
 /* ------------------------------------------------------------------ *
  * 5. Ingest — the frozen SSE contract §4.6
  * ------------------------------------------------------------------ */
-function reconcilePeople(nodes) {
+function reconcilePeople(nodes, zones) {
+  // Rebuild the floor plan whenever the reported areas change, then reseat
+  // anyone whose area moved (or vanished) into a valid area.
+  if (zones && zones.length && !zonesEqual(zones)) {
+    layoutZones(zones);
+    for (const p of people.values()) { const z = zoneOr(p.zone); const pt = randInZone(z); p.tx = pt.x; p.ty = pt.y; }
+    refreshConfigZones();
+  }
   const seen = new Set();
   for (const n of nodes) {
     if (n.kind !== 'person') continue;   // capabilities/topics are not on the floor plan
@@ -535,7 +607,7 @@ function handleOutbox(n) {
   const target = people.get(n.about_id);
   const pts = [];
   if (you) pts.push({ x: you.x, y: you.y, kind: 'you', label: n.to });
-  else { const c = zoneCenter('Window'); pts.push({ x: c.x, y: c.y, kind: 'you', label: n.to }); }
+  else { const c = zoneCenter(ZONE_LIST[0]); pts.push({ x: c.x, y: c.y, kind: 'you', label: n.to }); }
 
   const hops = (n.route && n.route.hops) ? n.route.hops : [];
   if (hops.length) {
@@ -546,7 +618,7 @@ function handleOutbox(n) {
   }
 
   if (target) pts.push({ x: target.x, y: target.y, kind: 'target', label: n.about });
-  else { const c = zoneCenter((n.route && n.route.target_zone) || 'Stage'); pts.push({ x: c.x, y: c.y, kind: 'target', label: n.about }); }
+  else { const c = zoneCenter((n.route && n.route.target_zone) || ZONE_LIST[0]); pts.push({ x: c.x, y: c.y, kind: 'target', label: n.about }); }
 
   activePath = { pts, t0: performance.now(), dur: 2600, hold: 9000 };
   showMatchCard(n);
@@ -665,7 +737,7 @@ function setEnergy(rows) {
  * 7. Frame router (shared by live SSE + mock feed)
  * ------------------------------------------------------------------ */
 function ingest(kind, data) {
-  if (kind === 'graph') reconcilePeople(data.nodes || []);
+  if (kind === 'graph') reconcilePeople(data.nodes || [], data.zones);
   else if (kind === 'stats') setStats(data);
   else if (kind === 'event') handleEvent(data);
   else if (kind === 'trace') addTrace(data);
@@ -689,7 +761,7 @@ function doReset() {
  * 8. MOCK data (matches §4.6 exactly) + a dev choreography
  * ------------------------------------------------------------------ */
 const MOCK_SNAPSHOT = {
-  zones: ZONE_LIST,
+  zones: MOCK_ZONES,
   nodes: [
     { id: 'a1', kind: 'person', label: 'Priya',  role: 'ml engineer',      zone: 'Window', state: 'open' },
     { id: 'a2', kind: 'person', label: 'Aisha',  role: 'founder',          zone: 'Window', state: 'heads-down' },
@@ -762,13 +834,15 @@ const MOCK_TRACE_VETO = {
 
 function mockFill() {
   doReset();
+  layoutZones(MOCK_SNAPSHOT.zones);
+  refreshConfigZones();
   setStats(MOCK_STATS);
   setEnergy(MOCK_ENERGY);
   // stagger arrivals so the room reads as filling live
   const persons = MOCK_SNAPSHOT.nodes.filter(n => n.kind === 'person');
   let i = 0;
   const timer = setInterval(() => {
-    reconcilePeople(persons.slice(0, ++i));
+    reconcilePeople(persons.slice(0, ++i), MOCK_SNAPSHOT.zones);
     if (i >= persons.length) clearInterval(timer);
   }, 180);
 }
@@ -821,6 +895,10 @@ function connectLive() {
   es.onerror = () => {};
   fetch('/api/stats').then(r => r.json()).then(setStats).catch(() => {});
   fetch('/api/energy').then(r => r.json()).then(setEnergy).catch(() => {});
+  // seed the floor plan from the venue's real areas before the first graph frame
+  fetch('/api/zones').then(r => r.json()).then(d => {
+    if (d && d.zones && d.zones.length && !zonesEqual(d.zones)) { layoutZones(d.zones); refreshConfigZones(); }
+  }).catch(() => {});
 }
 function setMode(live) {
   LIVE = live;
@@ -841,11 +919,145 @@ document.getElementById('btn-reset').onclick = () => { LIVE ? post('/api/reset')
 document.getElementById('btn-live').onclick = () => setMode(!LIVE);
 
 /* ------------------------------------------------------------------ *
+ * 9b. Theme — light by default, dark on toggle, choice persisted.
+ * ------------------------------------------------------------------ */
+const THEME_KEY = 'beeline-theme';
+function applyTheme(name) {
+  const t = name === 'dark' ? 'dark' : 'light';
+  document.documentElement.dataset.theme = t;
+  CV = THEME_CANVAS[t];
+  const btn = document.getElementById('btn-theme');
+  if (btn) {
+    btn.textContent = t === 'dark' ? '☀' : '☾';   // sun when dark, moon when light
+    btn.title = t === 'dark' ? 'Switch to light' : 'Switch to dark';
+  }
+  try { localStorage.setItem(THEME_KEY, t); } catch (e) {}
+}
+function initTheme() {
+  let saved = 'light';
+  try { saved = localStorage.getItem(THEME_KEY) || 'light'; } catch (e) {}
+  applyTheme(saved);
+}
+document.getElementById('btn-theme').onclick = () =>
+  applyTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
+
+/* ------------------------------------------------------------------ *
+ * 9c. Configure space — areas editor, room scan, workflow optimize.
+ *     For deploying the map in a new venue. Areas apply through
+ *     POST /api/zones; the map re-lays-out from the next graph frame
+ *     (live) or immediately (mock/offline).
+ * ------------------------------------------------------------------ */
+const cfgEl = document.getElementById('cfg');
+const cfgScrim = document.getElementById('cfg-scrim');
+const cfgZonesEl = document.getElementById('cfg-zones');
+let cfgDraft = [];   // area names being edited
+
+function openConfig() {
+  // start from the venue's current areas (fall back to what the map shows)
+  fetch('/api/zones').then(r => r.json()).then(d => {
+    cfgDraft = (d && d.zones && d.zones.length) ? d.zones.slice() : ZONE_LIST.slice();
+    renderConfigZones();
+  }).catch(() => { cfgDraft = ZONE_LIST.slice(); renderConfigZones(); });
+  cfgEl.hidden = false; cfgScrim.hidden = false;
+}
+function closeConfig() { cfgEl.hidden = true; cfgScrim.hidden = true; }
+
+function renderConfigZones() {
+  cfgZonesEl.innerHTML = '';
+  cfgDraft.forEach((name, i) => {
+    const row = document.createElement('div');
+    row.className = 'cfg-zone';
+    const input = document.createElement('input');
+    input.type = 'text'; input.value = name; input.placeholder = 'Area name';
+    input.oninput = () => { cfgDraft[i] = input.value; };
+    const up = document.createElement('button');
+    up.className = 'mv'; up.textContent = '↑'; up.title = 'Move up'; up.disabled = i === 0;
+    up.onclick = () => { [cfgDraft[i - 1], cfgDraft[i]] = [cfgDraft[i], cfgDraft[i - 1]]; renderConfigZones(); };
+    const down = document.createElement('button');
+    down.className = 'mv'; down.textContent = '↓'; down.title = 'Move down'; down.disabled = i === cfgDraft.length - 1;
+    down.onclick = () => { [cfgDraft[i + 1], cfgDraft[i]] = [cfgDraft[i], cfgDraft[i + 1]]; renderConfigZones(); };
+    const rm = document.createElement('button');
+    rm.className = 'mv rm'; rm.textContent = '✕'; rm.title = 'Remove';
+    rm.onclick = () => { cfgDraft.splice(i, 1); renderConfigZones(); };
+    row.append(input, up, down, rm);
+    cfgZonesEl.appendChild(row);
+  });
+}
+// keep the panel's list honest if the areas change underneath it (e.g. a scan
+// applied, or a live graph frame with new areas arrives while it is open)
+function refreshConfigZones() {
+  if (cfgEl && !cfgEl.hidden) { cfgDraft = ZONE_LIST.slice(); renderConfigZones(); }
+}
+
+// apply a set of areas: POST to the backend when live; also lay out locally so
+// mock / offline mode updates right away.
+function applyZones(names) {
+  const clean = names.map(s => String(s).trim()).filter(Boolean).slice(0, 8);
+  if (!clean.length) return;
+  layoutZones(clean);
+  for (const p of people.values()) { const pt = randInZone(zoneOr(p.zone)); p.tx = pt.x; p.ty = pt.y; }
+  cfgDraft = ZONE_LIST.slice(); renderConfigZones();
+  post('/api/zones', { zones: clean });   // no-ops gracefully offline
+}
+
+document.getElementById('btn-config').onclick = openConfig;
+document.getElementById('cfg-close').onclick = closeConfig;
+cfgScrim.onclick = closeConfig;
+document.getElementById('cfg-add').onclick = () => { cfgDraft.push('New area'); renderConfigZones(); };
+document.getElementById('cfg-apply').onclick = () => applyZones(cfgDraft);
+
+// --- scan the room ---------------------------------------------------
+const scanOut = document.getElementById('cfg-scan-out');
+document.getElementById('cfg-scan-file').onchange = ev => {
+  const file = ev.target.files && ev.target.files[0];
+  if (!file) return;
+  scanOut.innerHTML = '<div class="cfg-busy">Reading the room from your photo.</div>';
+  const reader = new FileReader();
+  reader.onload = () => {
+    fetch('/api/scan', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image: reader.result }) })
+      .then(r => r.json()).then(renderScan)
+      .catch(() => { scanOut.innerHTML = '<div class="cfg-busy">The scan did not come back. Try again.</div>'; });
+  };
+  reader.readAsDataURL(file);
+};
+function renderScan(res) {
+  const areas = (res && res.areas) || [];
+  const landmarks = (res && res.landmarks) || [];
+  let html = '<div class="cfg-result">';
+  html += `<div class="src">from scan · ${esc(res && res.source || 'suggestion')}</div>`;
+  if (res && res.summary) html += `<div class="summary">${esc(res.summary)}</div>`;
+  if (areas.length) html += '<div class="cfg-chips">' + areas.map(a => `<span class="cfg-chip">${esc(a)}</span>`).join('') + '</div>';
+  if (landmarks.length) html += landmarks.map(l =>
+    `<div class="cfg-landmark"><b>${esc(l.name)}</b>${l.note ? ' <span>· ' + esc(l.note) + '</span>' : ''}</div>`).join('');
+  if (areas.length) html += '<div class="cfg-row-actions"><button class="primary" id="cfg-scan-apply">Apply these areas</button></div>';
+  html += '</div>';
+  scanOut.innerHTML = html;
+  const applyBtn = document.getElementById('cfg-scan-apply');
+  if (applyBtn) applyBtn.onclick = () => { applyZones(areas); };
+}
+
+// --- optimize the room -----------------------------------------------
+const optOut = document.getElementById('cfg-opt-out');
+document.getElementById('cfg-optimize').onclick = () => {
+  optOut.innerHTML = '<div class="cfg-busy">Reading the live room.</div>';
+  fetch('/api/optimize', { method: 'POST' }).then(r => r.json()).then(res => {
+    const sugs = (res && res.suggestions) || [];
+    if (!sugs.length) { optOut.innerHTML = '<div class="cfg-busy">No suggestions right now. Fill the room and try again.</div>'; return; }
+    optOut.innerHTML = `<div class="cfg-result"><div class="src">optimizer · ${esc(res.source || 'live')}</div>` +
+      sugs.map(s => `<div class="cfg-sug"><div class="t">${esc(s.title)}</div><div class="d">${esc(s.detail)}</div></div>`).join('') +
+      '</div>';
+  }).catch(() => { optOut.innerHTML = '<div class="cfg-busy">The optimizer did not respond. Try again.</div>'; });
+};
+
+/* ------------------------------------------------------------------ *
  * 10. Boot
  * ------------------------------------------------------------------ */
 function joinURL() {
   try { return location.origin + '/join'; } catch (e) { return '/join'; }
 }
+initTheme();
+layoutZones(MOCK_ZONES);     // a placeholder plan so the map is never blank; real areas override
 computeView();
 renderQR(joinURL());
 requestAnimationFrame(frame);
