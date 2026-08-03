@@ -42,6 +42,28 @@ RocketRide Discord by the deadline.
 Every work package in Section 5 names which mandated technology it makes
 load-bearing. If a change does not serve one of the four, it is out of scope.
 
+### 0.1 Base coverage check (do the ideas-table baseline first, then add depth)
+
+Beeline is the **Event Networking Matchmaker** idea from the problem statement's
+suggested list, taken deeper. The rule we hold: **cover each sponsor's baseline
+use exactly as the doc describes it, then layer our depth on top.** Judges check
+the baseline is there; the depth is how we win. This table is the checklist.
+
+| Sponsor | Doc's baseline for this idea | We cover the baseline by | Our depth on top |
+|---|---|---|---|
+| **LaserData** | "Live attendee check-in / location / interest-tap data" | `checkin`, `position` (location), `interest` events streamed live | `state` and `feedback` as extra live signals |
+| **FalkorDB** | "Attendee interest and connection graph" | Person–Topic interest graph + MET connection graph | ask/offer `Capability` nodes, `Zone`, `FELT` affinity; multi-hop route + warm-intro |
+| **RocketRide** | "Sends real-time 'you should meet X' nudges" | the motion pipeline delivers the nudge | multi-step orchestration (persist→match→gate→icebreak→route→deliver), deployed `.pipe` on Cloud |
+| **Guild** | "Coordinates **matchmaker** and **icebreaker** agents" | a **matchmaker** agent and an **icebreaker** agent | plus an **empath** agent (emotion gate + learning) and a **router** agent (physical path) |
+
+The only baseline item not in the original 3-agent plan was the named
+**icebreaker** agent, so the agent lineup below is now four: matchmaker,
+icebreaker, empath, router. General per-sponsor guidance from the doc is also
+honored: FalkorDB is written to continuously and used for multi-hop retrieval;
+RocketRide reads memory then executes and sequences steps; Guild splits labor
+across specialists with a human-in-the-loop gate (the empath); LaserData feeds
+live data paired with FalkorDB for persistence.
+
 ---
 
 ## 1. What we are building
@@ -80,13 +102,13 @@ A working spine is in this repo. Do not rebuild from scratch; extend these files
 | File | Today | Beeline change |
 |---|---|---|
 | `src/overlap/memory.py` | FalkorDB graph: Person, Topic, Location; interest / met / nudge; `candidates`, `warm_intro`, `snapshot`, `stats` | Add Capability (ask/offer), Zone, state, affinity; `route`, `room_energy`; extend snapshot (WP1) |
-| `src/overlap/agents.py` | `matchmaker_local`, `critic_local`, `propose`, `review`, local+guild backends | Restructure to matchmaker / empath / router (WP2) |
+| `src/overlap/agents.py` | `matchmaker_local`, `critic_local`, `propose`, `review`, local+guild backends | Restructure to matchmaker / icebreaker / empath / router (WP2) |
 | `src/overlap/motion.py` | 5-step local pipeline + cloud handoff | Add new event types + 3-agent flow (WP3) |
 | `src/overlap/stream.py` | Local + Laser stream, event types checkin/interest/met/location | Add intent/position/state/feedback (WP4) |
 | `src/overlap/seed.py` | 12 synthetic attendees + acquaintances | Add ask/offer, zones, states, a demo movement script (WP4) |
 | `src/overlap/server.py` | FastAPI + SSE, seed/reset/event endpoints | Add check-in, state, position, feedback, energy, `/join` (WP5) |
 | `web/index.html` | Force-directed interest graph | Replace with floor-plan map + path animation (WP6) |
-| `guild/*.agent.ts` | matchmaker + critic stubs | matchmaker / empath / router (WP2) |
+| `guild/*.agent.ts` | matchmaker + critic stubs | matchmaker / icebreaker / empath / router (WP2) |
 | `config.py` | backends, tuning knobs | Add ZONES / STATES / FEEDBACK enums (WP4) |
 
 Backends all default to `local` and flip to real with one env var each
@@ -107,10 +129,11 @@ property. The demo must run fully on `local`; the real services are the upgrade.
                                                   ▼  met, feedback
         RocketRide Motion pipeline  ◀── the orchestration layer (mandate)
           1. persist event ─────────▶ FalkorDB  ◀── the memory layer (mandate)
-          2. matchmaker (who)   ┐
-          3. empath   (gate)    ├──── Guild agents ◀── coordination layer (mandate)
-          4. router   (path)    ┘
-          5. deliver nudge / hold
+          2. matchmaker (who)    ┐
+          3. empath   (gate)     ├─ Guild agents ◀── coordination layer (mandate)
+          4. icebreaker (opener) │   (matchmaker + icebreaker = the doc's baseline
+          5. router   (path)     ┘    pair; empath + router = our depth)
+          6. deliver nudge / hold
                                                   │
                                                   ▼
                          SSE ──▶ floor-plan map (the user sees the result)
@@ -315,43 +338,58 @@ against local FalkorDB on `:6379`.
 
 ### WP2 — Agents (Guild) · makes the COORDINATION mandate load-bearing
 
-**Goal.** Three specialist agents with distinct jobs and a human-in-the-loop gate.
+**Goal.** Four specialist agents with distinct jobs and a human-in-the-loop gate.
+The doc's baseline for this idea names **matchmaker** and **icebreaker**; those
+two are non-negotiable. **empath** and **router** are our depth.
 
 **Files.** `src/overlap/agents.py`, `guild/matchmaker.agent.ts`,
-`guild/empath.agent.ts`, `guild/router.agent.ts` (rename `critic.agent.ts`).
+`guild/icebreaker.agent.ts`, `guild/empath.agent.ts`, `guild/router.agent.ts`
+(rename `critic.agent.ts` to `router.agent.ts`).
 
-**The three agents.**
-- **matchmaker** — picks the single best person to introduce, using
-  `candidates` + `warm_intro`. Score = `2.0*len(complements) +
+**The four agents.**
+- **matchmaker** (baseline) — decides *who*. Picks the single best person to
+  introduce, using `candidates` + `warm_intro`. Score = `2.0*len(complements) +
   1.0*len(specific_shared) + affinity_adjust + (0.5 if warm_intro)`. Produces the
-  proposal (from/to, complements, shared_topics, connector, confidence, message).
-  Writes the nudge message (LLM if `ANTHROPIC_API_KEY`, else template; no em
-  dashes, no exclamation marks).
-- **empath** — the gate and the learning. On a proposal: veto/hold if the target
-  or recipient is not `open` (reason references the state), enforce the nudge
-  cooldown (only `approved` nudges start it — a hold or veto must not), and reject
-  a match whose only overlap is generic. On a `feedback` event: update affinity
-  (this is the learning loop; `not-for-me` suppresses that person and downweights
+  proposal (from/to, complements, shared_topics, connector, confidence). It does
+  NOT write the message — that is the icebreaker's job, so the split is real.
+- **icebreaker** (baseline) — writes the *opener*. Given the proposal, produces a
+  two-sentence nudge: why to meet them and one concrete thing to open with,
+  referencing the complementary ask/offer and the warm-intro connector if any
+  (LLM if `ANTHROPIC_API_KEY`, else a template; no em dashes, no exclamation
+  marks). This is the "icebreaker agent" the problem statement asks for by name.
+- **empath** (depth) — the gate and the learning. On a proposal: veto/hold if the
+  target or recipient is not `open` (reason references the state), enforce the
+  nudge cooldown (only `approved` nudges start it — a hold or veto must not), and
+  reject a match whose only overlap is generic. On a `feedback` event: update
+  affinity (the learning loop; `not-for-me` suppresses that person and downweights
   similar, `clicked` boosts).
-- **router** — given an approved proposal, call `route(a,b)`, attach the ordered
-  path and the on-the-way connector, and fold it into the delivered message.
+- **router** (depth) — given an approved proposal, call `route(a,b)`, attach the
+  ordered path and the on-the-way connector, and fold it into the delivered
+  message alongside the icebreaker's opener.
 
-Keep the `local` and `guild` backends behind one interface, as today. The TS
-agents mirror the Python logic exactly; nothing crosses the boundary but JSON.
+Coordination order in the pipeline (WP3): matchmaker → empath gate → (if approved)
+icebreaker + router → deliver. Keep the `local` and `guild` backends behind one
+interface, as today. The TS agents mirror the Python logic exactly; nothing
+crosses the boundary but JSON.
 
 **Acceptance.** A fixture test (`scripts/test_agents.py`) on a small in-memory
-graph shows: complementary intent beats shared interest in selection; empath holds
-when the target is `recharging` and approves when `open`; router returns a path
-containing the expected connector; a `not-for-me` feedback lowers that pair's next
-score.
+graph shows: complementary intent beats shared interest in selection; the
+icebreaker's opener names the complementary ask/offer (and the connector when
+present); empath holds when the target is `recharging` and approves when `open`;
+router returns a path containing the expected connector; a `not-for-me` feedback
+lowers that pair's next score.
 
 **Agent brief.**
-> Read `BUILD_SPEC.md` sections 0–4 and WP2. Restructure `src/overlap/agents.py`
-> into matchmaker / empath / router with the scoring and gating in WP2, keeping
-> the local+guild backends behind one interface. Update the TS agents in `guild/`
-> to match (rename `critic.agent.ts` to `router.agent.ts`, add `empath.agent.ts`).
-> Add `scripts/test_agents.py` proving the acceptance criteria. Depends on the
-> Memory API in section 4.4; assume those methods exist.
+> Read `BUILD_SPEC.md` sections 0, 0.1, 1–4 and WP2. Restructure
+> `src/overlap/agents.py` into FOUR agents — matchmaker, icebreaker, empath,
+> router — with the scoring, opener-writing, gating, and routing in WP2, keeping
+> the local+guild backends behind one interface. The matchmaker decides who and
+> the icebreaker writes the message (a real split, because the problem statement
+> names both by name). Update the TS agents in `guild/` to match: rename
+> `critic.agent.ts` to `router.agent.ts`, add `icebreaker.agent.ts` and
+> `empath.agent.ts`. Add `scripts/test_agents.py` proving the acceptance criteria.
+> Depends on the Memory API in section 4.4; assume those methods exist. Re-read
+> section 0.1 first: the matchmaker + icebreaker baseline is mandatory coverage.
 
 ---
 
@@ -366,11 +404,13 @@ router → deliver, with a readable trace and per-event latency.
 1. `_persist` handles all 4.2 event types (checkin, interest, intent, position,
    state, met, feedback). A `met` writes memory but does not trigger a nudge. A
    `feedback` routes to empath's learning update, not to matchmaking.
-2. The pipeline: matchmaker proposes → empath approves / holds / vetoes → if
-   approved, router attaches the path → deliver to the outbox. Record the nudge
-   with the right status (approved | held | vetoed).
-3. Trace steps named `memory.write`, `matchmaker`, `empath`, `router`, `action`,
-   each with a one-line human-readable detail and the approve/hold/veto flag.
+2. The pipeline: matchmaker proposes *who* → empath approves / holds / vetoes →
+   if approved, icebreaker writes the opener and router attaches the path →
+   deliver to the outbox. Record the nudge with the right status
+   (approved | held | vetoed).
+3. Trace steps named `memory.write`, `matchmaker`, `empath`, `icebreaker`,
+   `router`, `action`, each with a one-line human-readable detail and the
+   approve/hold/veto flag.
 4. Keep `_handle_cloud` as the RocketRide-Cloud path (same return shape); it stays
    a placeholder until the `.pipe` is built at the event.
 
@@ -379,10 +419,15 @@ introductions, holds (state), and vetoes (generic/cooldown), and a `feedback`
 event visibly shifts the next matchmaker choice. Latency per event recorded.
 
 **Agent brief.**
-> Read `BUILD_SPEC.md` sections 0–4 and WP3. Extend `src/overlap/motion.py` to the
-> 3-agent flow and the new event types, with a named trace and latency. Depends on
-> WP1 (Memory API 4.4) and WP2 (agents). Preserve the local/cloud switch and the
-> return shapes in 4.6. Do not touch the frontend or server.
+> Read `BUILD_SPEC.md` sections 0, 0.1, 1–4 and WP3. Extend `src/overlap/motion.py`
+> to the 4-agent flow (matchmaker → empath gate → icebreaker + router → deliver)
+> and the new event types, with a named trace and latency. Note WP4 renamed
+> `stream.LOCATION` to `stream.POSITION` and the check-in payload now uses `zone`
+> (not `location`) plus `ask`/`offer`/`state`; update `_persist` accordingly and
+> add handlers for `intent`, `state`, `feedback` (feedback routes to the empath's
+> learning update, not to matchmaking). Depends on WP1 (Memory API 4.4) and WP2
+> (agents). Preserve the local/cloud switch and the return shapes in 4.6. Do not
+> touch the frontend or server.
 
 ---
 
@@ -543,8 +588,9 @@ Each beat names the mandated technology it proves.
    way, and say hi to Chen on the way, he knows her." → **RocketRide**: memory
    becomes a physical route it hands you.
 5. **You tap recharging, a nudge holds.** "It saw I needed a minute." Then a
-   `not-for-me` tap and the next suggestion shifts. → **Guild**: three agents, one
-   of them allowed to say no, and the system learning from how a meeting felt.
+   `not-for-me` tap and the next suggestion shifts. → **Guild**: four agents
+   (matchmaker picks who, icebreaker writes the opener, empath is allowed to say
+   no, router draws the path), and the system learning from how a meeting felt.
 6. **Scan the QR, check in a judge live, route them to another judge.** Close.
 
 ---
@@ -555,8 +601,9 @@ Each beat names the mandated technology it proves.
       and answers the intent-first, warm-intro, and route queries. (Memory)
 - [ ] **RocketRide** orchestrates persist → decide → act per event, and the
       `.pipe` is deployed to Cloud at the event. (Motion, and the $1,000 prize)
-- [ ] **Guild** runs matchmaker + empath + router with a real veto/hold and the
-      feedback learning loop. (Coordination)
+- [ ] **Guild** runs matchmaker + icebreaker + empath + router (the doc's
+      matchmaker/icebreaker baseline plus our empath/router depth) with a real
+      veto/hold and the feedback learning loop. (Coordination)
 - [ ] **LaserData** carries the live check-in / position / state / feedback stream,
       fed by real phones. (Real-time)
 - [ ] The demo runs green on all-`local` backends, and each real backend flips on

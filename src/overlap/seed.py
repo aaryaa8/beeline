@@ -1,51 +1,90 @@
-"""Synthetic attendees for the room.
+"""Synthetic attendees for the room, plus the demo choreography.
 
 Deliberately built so that:
   - overlaps exist but are not uniform, so the graph has real structure
-  - some people share only a generic topic, giving the critic something to veto
-  - a few pairs already know each other, creating warm-intro paths
+  - matching is intent-first: several ask/offer pairs *complement* each other
+    (one person asks for exactly what another offers), because the whole pitch
+    is that the person worth meeting is the one whose offer answers your ask
+  - some people share only a generic topic ("ai"), giving the empath something
+    to veto
+  - a few pairs already know each other, creating 3-hop warm-intro paths
+  - people start in different zones and states, so routing is physical and the
+    emotional gate is exercisable
+
+Everything here is deterministic. `demo_sequence()` is the script WP8 replays on
+stage, and it must tell the same story every time.
 """
 from __future__ import annotations
 
 from . import stream
+from .config import ZONES, STATES
 
 FLOOR = "Frontier Tower 16"
-CAFE = "Cafe"
 
+# Attendee roster. Each row is:
+#   (id, name, role, interests[], ask, offer, zone, state)
+#
+# ask / offer are written as natural phrases; WP1's memory layer normalizes them
+# to lowercase Capability tags. The pairs below are chosen so complements EXIST:
+#   Marcus  "hiring a designer"        <-> Tomas  "design work"        (a2 <-> a4)
+#   Marcus  (also) "seed fundraising"  <-> Priya  no; funding offered by Rosa
+#   Rosa    "raising a seed round"     <-> ... she OFFERS healthcare intros
+#   Priya   "warm intro to founders"   <-> Marcus "intros to founders" (a1 <-> a2)
+#   Fatima  "a retrieval eval partner" <-> Ivan   "retrieval evaluation help" (a5 <-> a8)
+#   Lin     "advice on agent memory"   <-> Yuki   "agent memory product advice" (a3 <-> a12)
+#   Nadia   "a backend to pair with"   <-> Chen   "backend engineering" (a9 <-> a6)
+#   Kwame   "a mentor in ai"           <-> Sol     no; mentorship offered by Rosa/Marcus
 PEOPLE = [
-    ("a1", "Priya", "ml engineer", ["graph databases", "retrieval", "ai"], FLOOR),
-    ("a2", "Marcus", "founder", ["agent memory", "ai", "fundraising"], FLOOR),
-    ("a3", "Lin", "data engineer", ["streaming", "event sourcing", "ai"], FLOOR),
-    ("a4", "Tomas", "product designer", ["interface design", "agent memory"], FLOOR),
-    ("a5", "Fatima", "research scientist", ["retrieval", "evaluation", "graph databases"], FLOOR),
-    ("a6", "Chen", "backend engineer", ["streaming", "distributed systems"], CAFE),
-    ("a7", "Rosa", "founder", ["ai", "healthcare"], CAFE),
-    ("a8", "Ivan", "ml engineer", ["evaluation", "retrieval"], FLOOR),
-    ("a9", "Nadia", "design engineer", ["interface design", "data visualisation"], FLOOR),
-    ("a10", "Sol", "infra engineer", ["distributed systems", "event sourcing"], CAFE),
-    ("a11", "Kwame", "student", ["ai", "learning science"], FLOOR),
-    ("a12", "Yuki", "product manager", ["agent memory", "evaluation"], FLOOR),
+    # id    name      role                interests                                              ask                                offer                              zone      state
+    ("a1",  "Priya",  "ml engineer",      ["graph databases", "retrieval", "ai"],                "warm intro to founders",          "graph database expertise",        "Window", "open"),
+    ("a2",  "Marcus", "founder",          ["agent memory", "ai", "fundraising"],                 "hiring a designer",               "intros to founders",              "Stage",  "open"),
+    ("a3",  "Lin",    "data engineer",    ["streaming", "event sourcing", "ai"],                 "advice on agent memory",          "streaming pipeline design",       "Coffee", "open"),
+    ("a4",  "Tomas",  "product designer", ["interface design", "agent memory"],                  "a technical cofounder",           "design work",                     "Stage",  "open"),
+    ("a5",  "Fatima", "research scientist",["retrieval", "evaluation", "graph databases"],       "a retrieval eval partner",        "research collaboration",          "Window", "open"),
+    ("a6",  "Chen",   "backend engineer", ["streaming", "distributed systems"],                  "a frontend collaborator",         "backend engineering",             "Cafe",   "open"),
+    ("a7",  "Rosa",   "founder",          ["ai", "healthcare"],                                  "raising a seed round",            "seed funding advice",             "Cafe",   "heads-down"),
+    ("a8",  "Ivan",   "ml engineer",      ["evaluation", "retrieval"],                           "a research collaborator",         "retrieval evaluation help",       "Window", "open"),
+    ("a9",  "Nadia",  "design engineer",  ["interface design", "data visualisation"],            "a backend to pair with",          "data visualisation",              "Coffee", "open"),
+    ("a10", "Sol",    "infra engineer",   ["distributed systems", "event sourcing"],             "advice on distributed systems",   "infra and devops help",           "Cafe",   "in-flow"),
+    ("a11", "Kwame",  "student",          ["ai", "learning science"],                            "a mentor in ai",                  "user research help",              "Stage",  "open"),
+    ("a12", "Yuki",   "product manager",  ["agent memory", "evaluation"],                        "engineers to build with",         "agent memory product advice",     "Coffee", "open"),
 ]
 
-# Pairs who already know each other. These create the 3-hop warm-intro routes.
-ACQUAINTED = [("a1", "a5"), ("a3", "a6"), ("a4", "a9"), ("a8", "a12")]
+# Pairs who already know each other. These create the 3-hop warm-intro routes:
+# to reach someone new, the system can point out a mutual you can say hi to on
+# the way. History MUST be loaded before check-ins (see demo_sequence) so the
+# matchmaker never "introduces" two people who already met.
+#   a1-a5: Priya knows Fatima      (both Window, graph/retrieval crowd)
+#   a3-a6: Lin knows Chen          (bridges Coffee and Cafe, streaming crowd)
+#   a4-a9: Tomas knows Nadia       (the design pair)
+#   a8-a12: Ivan knows Yuki        (evaluation pair)
+#   a2-a1: Marcus knows Priya      (gives Marcus a warm path toward the Window)
+ACQUAINTED = [("a1", "a5"), ("a3", "a6"), ("a4", "a9"), ("a8", "a12"), ("a2", "a1")]
 
 
 def checkin_events() -> list[dict]:
+    """One checkin event per attendee, in roster order."""
     return [
-        stream.make_event(
-            stream.CHECKIN, id=pid, name=name, role=role, interests=list(interests), location=loc
+        stream.checkin(
+            id=pid, name=name, role=role, interests=list(interests),
+            ask=ask, offer=offer, zone=zone, state=state,
         )
-        for pid, name, role, interests, loc in PEOPLE
+        for pid, name, role, interests, ask, offer, zone, state in PEOPLE
     ]
 
 
 def acquaintance_events() -> list[dict]:
-    return [stream.make_event(stream.MET, a=a, b=b) for a, b in ACQUAINTED]
+    """Prior meeting history, as `met` events. These write memory only; a met
+    never fires a nudge."""
+    return [stream.met(a=a, b=b) for a, b in ACQUAINTED]
 
 
 def opening_sequence() -> list[dict]:
     """Prior history first, then the room fills up.
+
+    The simpler variant: history + check-ins, nothing more. Kept so tests and
+    callers that only want a populated room do not have to replay the whole
+    stage script. `demo_sequence()` is the full choreography.
 
     Order matters more than it looks. If a check-in is processed before the
     system knows who already knows whom, the matchmaker will confidently
@@ -54,3 +93,74 @@ def opening_sequence() -> list[dict]:
     than race it.
     """
     return acquaintance_events() + checkin_events()
+
+
+def demo_sequence() -> list[dict]:
+    """The deterministic stage script (BUILD_SPEC.md §4.2 / WP4 / §6).
+
+    Replayed through the motion pipeline it must tell one legible story and hit
+    every mandated-tech beat, the same way every time. The phases, in order:
+
+      (a) HISTORY FIRST. Load prior acquaintances (`met`) before anyone checks
+          in, so nobody is ever "introduced" to someone they already know. This
+          is the memory-leads-motion rule from opening_sequence, and it is load
+          bearing for the warm-intro paths.
+
+      (b) CHECK PEOPLE IN. The room fills. Every checkin is a LaserData event,
+          and the graph compounds underneath as they land.
+
+      (c) MOVEMENT. A few people walk between zones (`position`). This makes the
+          map move and makes any route physically true: the target's zone is
+          where they actually are now, not where they started.
+
+      (d) THE EMOTIONAL GATE. Flip ONE person to `recharging` right before they
+          would be a nudge target, so the empath visibly holds an introduction
+          instead of firing it. Fatima (a5) is the natural target for Ivan (a8)
+          and Priya (a1) via retrieval/eval + a warm intro, so we set her
+          `recharging` just before that match would land. "It saw I needed a
+          minute."
+
+      (e) THE LEARNING SHIFT. Fire ONE `feedback` of `not-for-me`, from Marcus
+          (a2) about Tomas (a4). Marcus asks for a designer and Tomas offers
+          design work, so that is the top complementary match; the negative tap
+          suppresses Tomas for Marcus and pushes the next suggestion (Nadia, a9,
+          who also does design/dataviz) forward. The visible shift is the point.
+
+    The pacing is encoded only in ordering, not sleeps; the server/WP8 spaces
+    replay in time. Comments mark each phase so the story is readable in code.
+    """
+    events: list[dict] = []
+
+    # (a) Prior history, before any arrival.
+    events += acquaintance_events()
+
+    # (b) The room checks in.
+    events += checkin_events()
+
+    # (c) A few people move. Priya drifts from the Window toward the Stage
+    #     (closer to Marcus); Ivan crosses to the Window toward Fatima; Chen
+    #     comes in from the Cafe to Coffee (nearer Nadia, the frontend he could
+    #     pair with). Movement is what makes the delivered route honest.
+    events += [
+        stream.position("a1", "Stage"),
+        stream.position("a8", "Window"),
+        stream.position("a6", "Coffee"),
+    ]
+
+    # (d) The emotional gate. Fatima needs a minute, right before the
+    #     retrieval/eval match to her would fire. The empath must HOLD, not
+    #     deliver. This is self-reported, one tap, never sensed.
+    events += [
+        stream.state("a5", "recharging"),
+    ]
+
+    # (e) The learning shift. Marcus met Tomas and it was not for him. That one
+    #     tap should suppress the top complementary match (designer) and move the
+    #     next-best design match (Nadia) up for Marcus. The system learns from how
+    #     the meeting felt, not from what it guessed.
+    events += [
+        stream.met("a2", "a4"),  # they actually met, so feedback can reference it
+        stream.feedback(from_id="a2", to_id="a4", value="not-for-me"),
+    ]
+
+    return events

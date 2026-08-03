@@ -22,20 +22,90 @@ from typing import Any, AsyncIterator, Protocol
 
 from .config import cfg
 
-# Event types the pipeline understands.
-CHECKIN = "checkin"
-INTEREST = "interest"
-MET = "met"
-LOCATION = "location"
+# Event types the pipeline understands (BUILD_SPEC.md §4.2). These strings are a
+# frozen contract: the stream, the motion pipeline and the server all key off
+# them, so they are named constants rather than bare literals to keep the seam
+# honest.
+CHECKIN = "checkin"    # {id, name, role, interests[], ask, offer, zone, state}
+INTEREST = "interest"  # {id, topic}
+INTENT = "intent"      # {id, ask?, offer?}
+POSITION = "position"  # {id, zone}   (was `location`; renamed to match the map)
+STATE = "state"        # {id, state}
+MET = "met"            # {a, b}
+FEEDBACK = "feedback"  # {from_id, to_id, value}
 
 
 def make_event(kind: str, **payload: Any) -> dict[str, Any]:
+    """Wrap a raw fact in the envelope every downstream stage expects.
+
+    The envelope is deliberately thin: an id (so a delivery can be de-duped or
+    referenced), the type (which stage routes on), a wall-clock ts (so replay
+    keeps order and the cooldown logic has real time), and the payload. Keeping
+    construction in one place is what lets §4.2 stay a single source of truth.
+    """
     return {
         "id": uuid.uuid4().hex[:12],
         "type": kind,
         "ts": time.time(),
         "payload": payload,
     }
+
+
+# --- Typed constructors --------------------------------------------------
+# Thin helpers over make_event, one per §4.2 type. They exist so callers name
+# payload fields correctly at the call site (a mistyped key silently becomes an
+# empty match downstream), and so the seed reads like a story rather than a pile
+# of dict literals. Each returns the same {id, type, ts, payload} shape.
+
+def checkin(id: str, name: str, role: str, interests: list[str],
+            ask: str, offer: str, zone: str, state: str) -> dict[str, Any]:
+    """A person arrives: identity, what they care about, what they need and
+    offer, where they are standing, and how they feel right now."""
+    return make_event(
+        CHECKIN, id=id, name=name, role=role, interests=list(interests),
+        ask=ask, offer=offer, zone=zone, state=state,
+    )
+
+
+def interest(id: str, topic: str) -> dict[str, Any]:
+    """Add one interest to an already-checked-in person."""
+    return make_event(INTEREST, id=id, topic=topic)
+
+
+def intent(id: str, ask: str | None = None, offer: str | None = None) -> dict[str, Any]:
+    """Set or update what someone wants / offers after check-in. Either side is
+    optional so a late 'actually I also offer X' is one small event."""
+    payload: dict[str, Any] = {"id": id}
+    if ask is not None:
+        payload["ask"] = ask
+    if offer is not None:
+        payload["offer"] = offer
+    return make_event(INTENT, **payload)
+
+
+def position(id: str, zone: str) -> dict[str, Any]:
+    """Person moved to a zone. This is what animates a dot across the floor and
+    what makes a route physically true at delivery time."""
+    return make_event(POSITION, id=id, zone=zone)
+
+
+def state(id: str, state: str) -> dict[str, Any]:
+    """Person changed emotional state. This is the gate: only `open` people are
+    routed to or nudged, so this single event can hold a pending introduction."""
+    return make_event(STATE, id=id, state=state)
+
+
+def met(a: str, b: str) -> dict[str, Any]:
+    """Two people met, whether that is prior history loaded up front or a live
+    meeting during the event. A met never triggers a nudge, it only remembers."""
+    return make_event(MET, a=a, b=b)
+
+
+def feedback(from_id: str, to_id: str, value: str) -> dict[str, Any]:
+    """One-tap after a meeting; value in FEEDBACK. This is the learning input:
+    `not-for-me` suppresses that person and downweights similar, `clicked`
+    boosts. It teaches the match graph without ever sensing anyone."""
+    return make_event(FEEDBACK, from_id=from_id, to_id=to_id, value=value)
 
 
 class EventStream(Protocol):
