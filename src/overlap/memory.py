@@ -389,28 +389,12 @@ class Memory:
         )
         b_name = b_name_res.result_set[0][0] if b_name_res.result_set else b
 
+        # A path is a hint, not a census. The one waypoint worth naming is a
+        # connector who has met B and can vouch for you: this is the "say hi to
+        # Chen on the way" moment, and it comes straight out of the graph. We
+        # deliberately do NOT list everyone standing in a zone; one named person
+        # you can walk up to beats a crowd, and it keeps the drawn path legible.
         hops: list[dict[str, Any]] = []
-        seen: set[str] = {a, b}
-        if connector_id:
-            seen.add(connector_id)
-
-        # 1. People in A's own zone.
-        mine = self.g.query(
-            """
-            MATCH (a:Person {id: $a})-[:AT]->(z:Zone)<-[:AT]-(x:Person)
-            WHERE x.id <> $a AND x.name IS NOT NULL
-            RETURN x.id, x.name, z.name
-            ORDER BY x.checked_in_at
-            """,
-            {"a": a},
-        )
-        for r in mine.result_set:
-            if r[0] in seen:
-                continue
-            seen.add(r[0])
-            hops.append({"id": r[0], "name": r[1], "zone": r[2], "reason": "in your zone"})
-
-        # 2. The known connector who can vouch for you.
         if connector:
             hops.append(
                 {
@@ -420,25 +404,6 @@ class Memory:
                     "reason": f"knows {b_name}",
                 }
             )
-
-        # 3. People already in the target's zone.
-        if target_zone:
-            near = self.g.query(
-                """
-                MATCH (b:Person {id: $b})-[:AT]->(z:Zone)<-[:AT]-(y:Person)
-                WHERE y.id <> $b AND y.name IS NOT NULL
-                RETURN y.id, y.name, z.name
-                ORDER BY y.checked_in_at
-                """,
-                {"b": b},
-            )
-            for r in near.result_set:
-                if r[0] in seen:
-                    continue
-                seen.add(r[0])
-                hops.append(
-                    {"id": r[0], "name": r[1], "zone": r[2], "reason": f"near {b_name}"}
-                )
 
         return {"target_zone": target_zone, "hops": hops}
 

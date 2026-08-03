@@ -161,6 +161,15 @@
   .sync-note { font-size: 12px; color: var(--muted); margin-top: 10px; text-align: center; min-height: 16px; }
   .sync-note.pending { color: var(--recharge); }
   a.reset { color: var(--muted); font-size: 13px; text-decoration: underline; display: inline-block; margin-top: 14px; }
+
+  /* the beeline card: a nudge that has arrived on this phone */
+  .card.beeline { border-color: var(--accent); background: linear-gradient(180deg, rgba(245,181,68,0.10), rgba(245,181,68,0.03)); }
+  .card.beeline .section-title { color: var(--accent); }
+  .bl-msg { font-size: 16px; line-height: 1.45; margin-top: 4px; }
+  .bl-route { font-size: 14px; margin-top: 10px; font-weight: 600; }
+  .bl-why { font-size: 12.5px; color: var(--muted); margin-top: 8px; }
+  .card.beeline.flash { animation: blflash 1.2s ease; }
+  @keyframes blflash { 0% { box-shadow: 0 0 0 0 rgba(245,181,68,0.55); } 100% { box-shadow: 0 0 0 14px rgba(245,181,68,0); } }
 </style>
 
 <h1>Beeline</h1>
@@ -217,6 +226,15 @@
       <div class="badge" id="whoState">open</div>
     </div>
     <p class="tagline" style="margin:0">You are in the room. Update these whenever things change.</p>
+  </div>
+
+  <!-- Beelines addressed to this phone. Polled from /api/inbox/<id>: this is the
+       nudge actually arriving on your device, not just on the big screen. -->
+  <div class="card beeline hidden" id="beelineCard">
+    <div class="section-title">A beeline for you</div>
+    <div class="bl-msg" id="blMsg"></div>
+    <div class="bl-route" id="blRoute"></div>
+    <div class="bl-why" id="blWhy"></div>
   </div>
 
   <div class="card">
@@ -514,6 +532,51 @@
     buildFeedback();
     window.scrollTo(0, 0);
     flushQueue();
+    startInbox();
+  }
+
+  // The nudge reaching the phone. Once checked in, poll for beelines addressed
+  // to this id. Only delivered introductions land here (held/vetoed never do),
+  // so anything shown is something to act on. Newest wins; we show the latest.
+  var _inboxTimer = null;
+  var _lastBeelineAt = 0;
+  function startInbox() {
+    if (_inboxTimer || !myId) return;
+    pollInbox();
+    _inboxTimer = setInterval(pollInbox, 4000);
+  }
+  function pollInbox() {
+    if (!myId) return;
+    fetch("/api/inbox/" + encodeURIComponent(myId))
+      .then(function (r) { return r.ok ? r.json() : []; })
+      .then(function (list) {
+        if (!list || !list.length) return;
+        var b = list[0]; // newest first from the server
+        showBeeline(b);
+      })
+      .catch(function () {}); // a flaky network just means we try again in 4s
+  }
+  function showBeeline(b) {
+    var card = $("beelineCard");
+    var route = b.route || {};
+    var hops = (route.hops || []);
+    // Build the human route line: "Go to Stage. Say hi to Priya on the way."
+    var line = route.target_zone ? ("Go to " + route.target_zone + ".") : "";
+    if (hops.length) {
+      var names = hops.map(function (h) { return h.name; }).filter(Boolean);
+      if (names.length) line += " Say hi to " + names.join(", then ") + " on the way.";
+    }
+    $("blMsg").textContent = b.message || ("Go find " + (b.about || "someone") + ".");
+    $("blRoute").textContent = line;
+    $("blWhy").textContent = b.why || "";
+    card.classList.remove("hidden");
+    // gently flag a fresh one
+    if (b.at && b.at !== _lastBeelineAt) {
+      _lastBeelineAt = b.at;
+      toast("Beeline: go meet " + (b.about || "someone"), "ok");
+      card.classList.add("flash");
+      setTimeout(function () { card.classList.remove("flash"); }, 1200);
+    }
   }
 
   function moveZone(z) {

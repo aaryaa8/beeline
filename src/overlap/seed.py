@@ -24,30 +24,33 @@ FLOOR = "Frontier Tower 16"
 # Attendee roster. Each row is:
 #   (id, name, role, interests[], ask, offer, zone, state)
 #
-# ask / offer are written as natural phrases; WP1's memory layer normalizes them
-# to lowercase Capability tags. The pairs below are chosen so complements EXIST:
-#   Marcus  "hiring a designer"        <-> Tomas  "design work"        (a2 <-> a4)
-#   Marcus  (also) "seed fundraising"  <-> Priya  no; funding offered by Rosa
-#   Rosa    "raising a seed round"     <-> ... she OFFERS healthcare intros
-#   Priya   "warm intro to founders"   <-> Marcus "intros to founders" (a1 <-> a2)
-#   Fatima  "a retrieval eval partner" <-> Ivan   "retrieval evaluation help" (a5 <-> a8)
-#   Lin     "advice on agent memory"   <-> Yuki   "agent memory product advice" (a3 <-> a12)
-#   Nadia   "a backend to pair with"   <-> Chen   "backend engineering" (a9 <-> a6)
-#   Kwame   "a mentor in ai"           <-> Sol     no; mentorship offered by Rosa/Marcus
+# ask / offer normalize to lowercase Capability tags, and a complement is an
+# EXACT tag match (my WANTS == their OFFERS). So the pairs below deliberately
+# share a controlled vocabulary word-for-word, otherwise complements come back
+# empty and the intent-first pitch silently degrades to shared-interest matching.
+# The complementary pairs (ask on one side == offer on the other):
+#   "design"                : Marcus wants  <-> Tomas offers      (a2 <-> a4)
+#   "founder introductions" : Priya wants   <-> Marcus offers     (a1 <-> a2)
+#   "retrieval evaluation"  : Fatima wants  <-> Ivan offers       (a5 <-> a8)
+#   "research collaboration": Ivan wants    <-> Fatima offers     (a8 <-> a5, the double bond)
+#   "agent memory advice"   : Lin wants     <-> Yuki offers       (a3 <-> a12)
+#   "backend engineering"   : Nadia wants   <-> Chen offers       (a9 <-> a6)
+# Rosa / Sol / Kwame carry no complement on purpose (and Rosa/Sol are not `open`),
+# so the room also produces honest "only generic overlap" vetoes.
 PEOPLE = [
-    # id    name      role                interests                                              ask                                offer                              zone      state
-    ("a1",  "Priya",  "ml engineer",      ["graph databases", "retrieval", "ai"],                "warm intro to founders",          "graph database expertise",        "Window", "open"),
-    ("a2",  "Marcus", "founder",          ["agent memory", "ai", "fundraising"],                 "hiring a designer",               "intros to founders",              "Stage",  "open"),
-    ("a3",  "Lin",    "data engineer",    ["streaming", "event sourcing", "ai"],                 "advice on agent memory",          "streaming pipeline design",       "Coffee", "open"),
-    ("a4",  "Tomas",  "product designer", ["interface design", "agent memory"],                  "a technical cofounder",           "design work",                     "Stage",  "open"),
-    ("a5",  "Fatima", "research scientist",["retrieval", "evaluation", "graph databases"],       "a retrieval eval partner",        "research collaboration",          "Window", "open"),
-    ("a6",  "Chen",   "backend engineer", ["streaming", "distributed systems"],                  "a frontend collaborator",         "backend engineering",             "Cafe",   "open"),
-    ("a7",  "Rosa",   "founder",          ["ai", "healthcare"],                                  "raising a seed round",            "seed funding advice",             "Cafe",   "heads-down"),
-    ("a8",  "Ivan",   "ml engineer",      ["evaluation", "retrieval"],                           "a research collaborator",         "retrieval evaluation help",       "Window", "open"),
-    ("a9",  "Nadia",  "design engineer",  ["interface design", "data visualisation"],            "a backend to pair with",          "data visualisation",              "Coffee", "open"),
-    ("a10", "Sol",    "infra engineer",   ["distributed systems", "event sourcing"],             "advice on distributed systems",   "infra and devops help",           "Cafe",   "in-flow"),
-    ("a11", "Kwame",  "student",          ["ai", "learning science"],                            "a mentor in ai",                  "user research help",              "Stage",  "open"),
-    ("a12", "Yuki",   "product manager",  ["agent memory", "evaluation"],                        "engineers to build with",         "agent memory product advice",     "Coffee", "open"),
+    # id    name      role                interests                                              ask                        offer                       zone      state
+    ("a1",  "Priya",  "ml engineer",      ["graph databases", "retrieval", "ai"],                "founder introductions",   "graph databases",          "Window", "open"),
+    ("a2",  "Marcus", "founder",          ["agent memory", "ai", "fundraising"],                 "design",                  "founder introductions",    "Stage",  "open"),
+    ("a3",  "Lin",    "data engineer",    ["streaming", "event sourcing", "ai"],                 "agent memory advice",     "streaming design",         "Coffee", "open"),
+    ("a4",  "Tomas",  "product designer", ["interface design", "agent memory"],                  "a technical cofounder",   "design",                   "Stage",  "open"),
+    ("a5",  "Fatima", "research scientist",["retrieval", "evaluation", "graph databases"],       "retrieval evaluation",    "research collaboration",   "Window", "open"),
+    ("a6",  "Chen",   "backend engineer", ["streaming", "distributed systems"],                  "a frontend collaborator", "backend engineering",      "Cafe",   "open"),
+    ("a7",  "Rosa",   "founder",          ["ai", "healthcare"],                                  "seed fundraising",        "healthcare introductions", "Cafe",   "heads-down"),
+    ("a8",  "Ivan",   "ml engineer",      ["evaluation", "retrieval"],                           "research collaboration",  "retrieval evaluation",     "Window", "open"),
+    ("a9",  "Nadia",  "design engineer",  ["interface design", "data visualisation"],            "backend engineering",     "data visualisation",       "Coffee", "open"),
+    ("a10", "Sol",    "infra engineer",   ["distributed systems", "event sourcing"],             "distributed systems help","devops help",              "Cafe",   "in-flow"),
+    ("a11", "Kwame",  "student",          ["ai", "learning science"],                            "a mentor",                "user research",            "Stage",  "open"),
+    ("a12", "Yuki",   "product manager",  ["agent memory", "evaluation"],                        "engineers to build with", "agent memory advice",      "Coffee", "open"),
 ]
 
 # Pairs who already know each other. These create the 3-hop warm-intro routes:
