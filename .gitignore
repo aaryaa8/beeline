@@ -6,3 +6,5 @@ __pycache__/
 node_modules/
 dump.rdb
 guild/.build/
+beeline-icebreaker.pipe
+*.pipe
