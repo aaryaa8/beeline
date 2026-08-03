@@ -39,18 +39,18 @@ FLOOR = "Frontier Tower 16"
 # so the room also produces honest "only generic overlap" vetoes.
 PEOPLE = [
     # id    name      role                interests                                              ask                        offer                       zone      state
-    ("a1",  "Priya",  "ml engineer",      ["graph databases", "retrieval", "ai"],                "founder introductions",   "graph databases",          "Window", "open"),
-    ("a2",  "Marcus", "founder",          ["agent memory", "ai", "fundraising"],                 "design",                  "founder introductions",    "Stage",  "open"),
-    ("a3",  "Lin",    "data engineer",    ["streaming", "event sourcing", "ai"],                 "agent memory advice",     "streaming design",         "Coffee", "open"),
-    ("a4",  "Tomas",  "product designer", ["interface design", "agent memory"],                  "a technical cofounder",   "design",                   "Stage",  "open"),
-    ("a5",  "Fatima", "research scientist",["retrieval", "evaluation", "graph databases"],       "retrieval evaluation",    "research collaboration",   "Window", "open"),
-    ("a6",  "Chen",   "backend engineer", ["streaming", "distributed systems"],                  "a frontend collaborator", "backend engineering",      "Cafe",   "open"),
-    ("a7",  "Rosa",   "founder",          ["ai", "healthcare"],                                  "seed fundraising",        "healthcare introductions", "Cafe",   "heads-down"),
-    ("a8",  "Ivan",   "ml engineer",      ["evaluation", "retrieval"],                           "research collaboration",  "retrieval evaluation",     "Window", "open"),
-    ("a9",  "Nadia",  "design engineer",  ["interface design", "data visualisation"],            "backend engineering",     "data visualisation",       "Coffee", "open"),
-    ("a10", "Sol",    "infra engineer",   ["distributed systems", "event sourcing"],             "distributed systems help","devops help",              "Cafe",   "in-flow"),
-    ("a11", "Kwame",  "student",          ["ai", "learning science"],                            "a mentor",                "user research",            "Stage",  "open"),
-    ("a12", "Yuki",   "product manager",  ["agent memory", "evaluation"],                        "engineers to build with", "agent memory advice",      "Coffee", "open"),
+    ("a1",  "Priya",  "ml engineer",      ["graph databases", "retrieval", "ai"],                "founder introductions",   "graph databases",          "Kitchen", "open"),
+    ("a2",  "Marcus", "founder",          ["agent memory", "ai", "fundraising"],                 "design",                  "founder introductions",    "Presentation Stage",  "open"),
+    ("a3",  "Lin",    "data engineer",    ["streaming", "event sourcing", "ai"],                 "agent memory advice",     "streaming design",         "Elevator Lobby", "open"),
+    ("a4",  "Tomas",  "product designer", ["interface design", "agent memory"],                  "a technical cofounder",   "design",                   "Presentation Stage",  "open"),
+    ("a5",  "Fatima", "research scientist",["retrieval", "evaluation", "graph databases"],       "retrieval evaluation",    "research collaboration",   "Kitchen", "open"),
+    ("a6",  "Chen",   "backend engineer", ["streaming", "distributed systems"],                  "a frontend collaborator", "backend engineering",      "Back Work Rooms",   "open"),
+    ("a7",  "Rosa",   "founder",          ["ai", "healthcare"],                                  "seed fundraising",        "healthcare introductions", "Back Work Rooms",   "heads-down"),
+    ("a8",  "Ivan",   "ml engineer",      ["evaluation", "retrieval"],                           "research collaboration",  "retrieval evaluation",     "Kitchen", "open"),
+    ("a9",  "Nadia",  "design engineer",  ["interface design", "data visualisation"],            "backend engineering",     "data visualisation",       "Elevator Lobby", "open"),
+    ("a10", "Sol",    "infra engineer",   ["distributed systems", "event sourcing"],             "distributed systems help","devops help",              "Back Work Rooms",   "in-flow"),
+    ("a11", "Kwame",  "student",          ["ai", "learning science"],                            "a mentor",                "user research",            "Presentation Stage",  "open"),
+    ("a12", "Yuki",   "product manager",  ["agent memory", "evaluation"],                        "engineers to build with", "agent memory advice",      "Elevator Lobby", "open"),
 ]
 
 # Pairs who already know each other. These create the 3-hop warm-intro routes:
@@ -145,9 +145,9 @@ def demo_sequence() -> list[dict]:
     #     comes in from the Cafe to Coffee (nearer Nadia, the frontend he could
     #     pair with). Movement is what makes the delivered route honest.
     events += [
-        stream.position("a1", "Stage"),
-        stream.position("a8", "Window"),
-        stream.position("a6", "Coffee"),
+        stream.position("a1", "Presentation Stage"),
+        stream.position("a8", "Kitchen"),
+        stream.position("a6", "Elevator Lobby"),
     ]
 
     # (d) The emotional gate. Fatima needs a minute, right before the

@@ -22,6 +22,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 
 from . import seed as seedmod
+from . import space as spacemod
 from . import stream as streammod
 from .config import cfg
 from .memory import Memory
@@ -126,6 +127,16 @@ async def app_js() -> FileResponse:
 @app.get("/join")
 async def join() -> FileResponse:
     return FileResponse(WEB / "join.html", media_type="text/html")
+
+
+@app.get("/fonts/{fname}")
+async def fonts(fname: str) -> FileResponse:
+    """Self-hosted Nunito (woff2 + its css). No CDN, so the type survives a dead
+    venue network."""
+    safe = pathlib.Path(fname).name  # no traversal
+    path = WEB / "fonts" / safe
+    media = "text/css" if safe.endswith(".css") else "font/woff2"
+    return FileResponse(path, media_type=media)
 
 
 # ---------------------------------------------------------------------- #
@@ -234,6 +245,56 @@ async def post_feedback(request: Request) -> JSONResponse:
     )
     await bus.publish(event)
     return JSONResponse({"published": event})
+
+
+@app.get("/api/zones")
+async def get_zones() -> JSONResponse:
+    """The venue's current areas (the floor plan)."""
+    from .config import ZONES
+
+    return JSONResponse({"zones": list(ZONES)})
+
+
+@app.post("/api/zones")
+async def post_zones(request: Request) -> JSONResponse:
+    """Reconfigure the venue's areas for a new location. Sets the areas, then
+    spreads everyone already in the room across the new areas (round robin) so the
+    map immediately reflects the new floor plan, and broadcasts the change."""
+    from .config import set_zones
+
+    body = await request.json()
+    zones = set_zones(body.get("zones", []))
+
+    # Redistribute existing people across the new areas so nobody is stranded in
+    # an area that no longer exists.
+    snap = memory.snapshot()
+    people = [n["id"] for n in snap["nodes"] if n.get("kind") == "person"]
+    for i, pid in enumerate(people):
+        memory.record_position(pid, zones[i % len(zones)])
+
+    _broadcast("graph", memory.snapshot())
+    _broadcast("stats", _stats_payload())
+    _broadcast("energy", memory.room_energy())
+    return JSONResponse({"zones": zones})
+
+
+@app.post("/api/scan")
+async def post_scan(request: Request) -> JSONResponse:
+    """A room photo becomes a suggested floor plan: areas + architectural
+    landmarks. Suggestions only; the client applies them via POST /api/zones."""
+    body = await request.json()
+    result = await asyncio.to_thread(spacemod.scan_room, body.get("image", ""))
+    return JSONResponse(result)
+
+
+@app.post("/api/optimize")
+async def post_optimize() -> JSONResponse:
+    """The workflow optimiser: reads the live graph and suggests moves that would
+    turn unmet shared interests into introductions."""
+    result = await asyncio.to_thread(
+        spacemod.optimise, memory.snapshot(), memory.bridge_topics()
+    )
+    return JSONResponse(result)
 
 
 @app.post("/api/seed")

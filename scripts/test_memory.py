@@ -149,7 +149,10 @@ print("CRITERION 4 (feedback shifts affinity) PASS")
 # --- snapshot exact shape ----------------------------------------------------
 snap = m.snapshot()
 print("snapshot        ", len(snap["nodes"]), "nodes,", len(snap["edges"]), "edges")
-assert snap["zones"] == ["Window", "Coffee", "Stage", "Cafe"], snap["zones"]
+# snapshot advertises the venue's configured areas (default: the real floor);
+# the test's own people can sit in any area name, that is independent.
+from overlap.config import ZONES as CONFIGURED_AREAS  # noqa: E402
+assert snap["zones"] == CONFIGURED_AREAS, snap["zones"]
 assert snap["nodes"] and snap["edges"]
 kinds = {n["kind"] for n in snap["nodes"]}
 assert {"person", "topic", "capability"} <= kinds, kinds

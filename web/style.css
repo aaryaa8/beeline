@@ -32,7 +32,7 @@ html, body { height: 100%; margin: 0; }
 body {
   background: var(--bg);
   color: var(--text);
-  font: 15px/1.5 ui-sans-serif, -apple-system, "SF Pro Text", system-ui, sans-serif;
+  font: 15px/1.5 "Nunito", ui-sans-serif, -apple-system, "SF Pro Text", system-ui, sans-serif;
   display: grid;
   grid-template-columns: 1fr 420px;
   overflow: hidden;

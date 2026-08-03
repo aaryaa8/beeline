@@ -102,9 +102,28 @@ class Config:
 
 cfg = Config()
 
-# --- Beeline shared enums (frozen contract, BUILD_SPEC.md §4.1) -----------
-# Floor-16 zones on the map. Positions are zone-level, not coordinates.
-ZONES = ["Window", "Coffee", "Stage", "Cafe"]
+# --- Beeline areas (the floor plan) --------------------------------------
+# The named areas of the venue. Positions are area-level, not coordinates.
+# Default to the real Frontier Tower floor; configurable at runtime so the app
+# drops into any venue (see set_zones + POST /api/zones). Kept a mutable module
+# list so callers that already did `from .config import ZONES` see edits, and
+# set_zones mutates in place rather than rebinding.
+ZONES = ["Kitchen", "Elevator Lobby", "Presentation Stage", "Back Work Rooms"]
+
+
+def set_zones(names: list[str]) -> list[str]:
+    """Replace the venue's areas in place. Names are trimmed; blanks dropped;
+    order preserved; duplicates removed. Returns the new list."""
+    seen: set[str] = set()
+    cleaned: list[str] = []
+    for n in names:
+        n = (n or "").strip()
+        if n and n.lower() not in seen:
+            seen.add(n.lower())
+            cleaned.append(n)
+    if cleaned:
+        ZONES[:] = cleaned
+    return list(ZONES)
 
 # Self-reported emotional state. Only `open` people participate in active
 # routing (as target or recipient); the others are paused with different copy:
