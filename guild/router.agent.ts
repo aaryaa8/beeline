@@ -1,15 +1,16 @@
 /**
- * Guild.ai agent: router.
+ * Guild.ai agent: router (real @guildai/agents-sdk).
  *
- * Turns an approved match into a physical path. The multi-hop graph traversal
- * lives in the RocketRide pipeline against FalkorDB (Guild has no graph); this
- * agent receives the ordered hops and folds in the on-the-way connector who can
- * vouch, producing the shape the delivery renders alongside the icebreaker's
- * opener. Mirrors router_local in ../src/overlap/agents.py.
+ * Turns an approved match into a physical path, as a deterministic Guild
+ * `agent()`. The multi-hop graph traversal that finds the route lives upstream
+ * in the RocketRide pipeline against FalkorDB (Guild has no graph); this agent
+ * receives the resolved route (target zone plus the one connector worth naming)
+ * and turns it into the human line the nudge carries: "go to the Stage, say hi
+ * to Priya on the way, she knows Marcus."
  *
- * Deploy:  guild agent save && guild agent publish
+ * Publish:  see guild/publish.sh
  */
-import { agent } from "@guildai/agents-sdk";
+import { agent, output } from "@guildai/agents-sdk";
 import { z } from "zod";
 
 const Hop = z.object({
@@ -19,37 +20,41 @@ const Hop = z.object({
   reason: z.string(),
 });
 
-const Input = z.object({
-  route: z.object({
-    target_zone: z.string().nullable(),
-    hops: z.array(Hop),
-  }),
-  connector: z.any().nullable(),
-});
-
-const Output = z.object({
+const Route = z.object({
   target_zone: z.string().nullable(),
   hops: z.array(Hop),
-  connector: z.any().nullable(),
+  connector: z
+    .object({ connector_id: z.string(), connector_name: z.string() })
+    .nullable(),
 });
 
 export default agent({
-  name: "router",
-  description: "Folds the ordered path and the vouch connector into the delivery.",
-  input: Input,
-  output: Output,
-
-  async run({ input }) {
-    const { route, connector } = input;
-
-    // Prefer the warm-intro connector the matchmaker found; otherwise the first
-    // "knows <target>" hop on the path is the one who can vouch.
-    let vouch = connector;
-    if (!vouch) {
-      const hop = route.hops.find((h) => h.reason.startsWith("knows "));
-      if (hop) vouch = { connector_id: hop.id, connector_name: hop.name };
+  description:
+    "Turns a resolved route (target zone plus connector) into the human walk-this-way line.",
+  inputSchema: z.object({
+    to_name: z.string(),
+    route: Route,
+  }),
+  outputSchema: z.object({
+    target_zone: z.string().nullable(),
+    hops: z.array(Hop),
+    connector: Route.shape.connector,
+    line: z.string().describe("The human route line for the nudge"),
+  }),
+  stateSchema: z.object({}),
+  tools: {},
+  start: async (input) => {
+    const r = input.route;
+    let line = r.target_zone ? `Go to ${r.target_zone}.` : `Go find ${input.to_name}.`;
+    const names = r.hops.map((h) => h.name).filter(Boolean);
+    if (names.length) {
+      line += ` Say hi to ${names.join(", then ")} on the way.`;
     }
-
-    return { target_zone: route.target_zone, hops: route.hops, connector: vouch };
+    return output({
+      target_zone: r.target_zone,
+      hops: r.hops,
+      connector: r.connector,
+      line,
+    });
   },
 });

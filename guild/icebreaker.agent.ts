@@ -1,95 +1,77 @@
 /**
- * Guild.ai agent: icebreaker.
+ * Guild.ai agent: icebreaker (real @guildai/agents-sdk).
  *
- * Writes the OPENER. The matchmaker has already decided who; this agent turns
- * that proposal into a two-sentence nudge: why to meet them, and one concrete
- * thing to open with, naming the complementary ask/offer and the warm-intro
- * connector when there is one. No em dashes, no exclamation marks.
+ * A deterministic Guild `agent()`: given the matchmaker's proposal it writes the
+ * OPENER, the two sentences a nervous human can walk up and say. Sentence one is
+ * why to meet them (the complementary ask/offer, or a real shared interest);
+ * sentence two is one concrete thing to open with, naming the warm-intro
+ * connector when there is one.
  *
- * This is the "icebreaker agent" the problem statement asks for by name. It
- * mirrors icebreaker_local in ../src/overlap/agents.py.
+ * Kept deterministic (a template, not an LLM) so the opener is reproducible on
+ * stage and needs no model access. The local Python path can swap in an LLM when
+ * ANTHROPIC_API_KEY is set; the Guild-hosted version stays template-based on
+ * purpose. No em dashes, no exclamation marks (house style, and calmer copy).
  *
- * Deploy:  guild agent save && guild agent publish
+ * Publish:  see guild/publish.sh
  */
-import { agent } from "@guildai/agents-sdk";
+import { agent, output } from "@guildai/agents-sdk";
 import { z } from "zod";
 
-const Party = z.object({
-  name: z.string().nullable(),
-  role: z.string().nullable().optional(),
-  ask: z.string().nullable().optional(),
-  offer: z.string().nullable().optional(),
+const WarmIntro = z
+  .object({
+    connector_id: z.string(),
+    connector_name: z.string(),
+    via_topics: z.array(z.string()),
+  })
+  .nullable();
+
+const Proposal = z.object({
+  from_name: z.string(),
+  to_name: z.string(),
+  to_role: z.string().nullable(),
+  // ask/offer of the person we are nudging, so we can phrase the complement.
+  from_ask: z.string().nullable(),
+  from_offer: z.string().nullable(),
+  complements: z.array(z.string()),
+  specific_topics: z.array(z.string()),
+  connector: WarmIntro,
 });
 
-const Input = z.object({
-  proposal: z.object({
-    to_name: z.string(),
-    complements: z.array(z.string()),
-    specific_topics: z.array(z.string()),
-    connector: z.any().nullable(),
-  }),
-  me: Party,
-  them: Party,
-});
-
-const Output = z.object({ opener: z.string() });
-
-// Say the ask/offer match in the right direction, mirroring _complement_phrase.
-function complementPhrase(me: z.infer<typeof Party>, complement: string): string {
-  if (complement && complement === (me.offer || "")) {
-    return `they are looking for ${complement}, which you offer`;
-  }
-  if (complement && complement === (me.ask || "")) {
-    return `they offer ${complement}, which you are looking for`;
-  }
-  return complement ? `your ask and their offer line up on ${complement}` : "";
+function complementPhrase(p: z.infer<typeof Proposal>): string {
+  const c = p.complements[0];
+  if (!c) return "";
+  if (c === p.from_offer) return `they are looking for ${c}, which you offer`;
+  if (c === p.from_ask) return `they offer ${c}, which you are looking for`;
+  return `your ask and their offer line up on ${c}`;
 }
 
 export default agent({
-  name: "icebreaker",
-  description: "Writes the two-sentence opener for a chosen introduction.",
-  input: Input,
-  output: Output,
+  description:
+    "Writes a two-sentence opener for a proposed introduction: why to meet them and how to start.",
+  inputSchema: z.object({ proposal: Proposal }),
+  outputSchema: z.object({ message: z.string() }),
+  stateSchema: z.object({}),
+  tools: {},
+  start: async (input) => {
+    const p = input.proposal;
 
-  async run({ input, llm }) {
-    const { proposal, me, them } = input;
-    const complement = proposal.complements[0];
-    const hook = proposal.specific_topics[0] || complement || null;
-    const intent = complement ? complementPhrase(me, complement) : "no direct ask/offer match";
-    const route = proposal.connector
-      ? `${proposal.connector.connector_name} already knows them and can introduce you.`
-      : "No mutual connection yet, so introduce yourself directly.";
-
-    // Prefer the model; fall back to the deterministic template on any failure so
-    // the opener still names the complement and the connector.
-    try {
-      const text = await llm.text({
-        prompt:
-          "Write a two-sentence nudge telling one person at a hackathon why to go " +
-          "meet another, and one specific thing to open with. Name the complementary " +
-          "ask/offer, and the connector if there is one. Be concrete and plain. " +
-          "No em dashes, no exclamation marks.\n\n" +
-          `Person: ${me.name}, ${me.role}\n` +
-          `Should meet: ${them.name}, ${them.role}\n` +
-          `Ask/offer match: ${intent}\n` +
-          `Shared interests: ${proposal.specific_topics.join(", ")}\n` +
-          `Route: ${route}`,
-        maxTokens: 150,
-      });
-      return { opener: text.trim().replace(/—/g, ", ").replace(/ - /g, ", ") };
-    } catch {
-      const why = complement
-        ? `Go find ${proposal.to_name}, ${complementPhrase(me, complement)}.`
-        : hook
-          ? `Go find ${proposal.to_name}, you both work on ${hook}.`
-          : `Go find ${proposal.to_name}, there is a real reason to talk.`;
-      const how = proposal.connector
-        ? `Open by mentioning ${proposal.connector.connector_name}, who already knows them` +
-          (hook ? `, then bring up ${hook}.` : " and can vouch for you.")
-        : hook
-          ? `Open by asking what they are doing with ${hook}.`
-          : "Open by asking what brought them to the room today.";
-      return { opener: `${why} ${how}` };
+    // Sentence 1: the reason. Prefer the intent match, then a real shared
+    // interest, then a plain nudge.
+    let why: string;
+    if (p.complements.length) {
+      why = `Go find ${p.to_name}, ${complementPhrase(p)}.`;
+    } else if (p.specific_topics.length) {
+      why = `Go find ${p.to_name}, you both work on ${p.specific_topics.slice(0, 2).join(" and ")}.`;
+    } else {
+      why = `Go find ${p.to_name}, there is a real reason to talk.`;
     }
+
+    // Sentence 2: how to open. Lean on the connector if there is one.
+    const topic = p.complements[0] || p.specific_topics[0] || "what they are working on";
+    const how = p.connector
+      ? `Open by mentioning ${p.connector.connector_name}, who already knows them, then bring up ${topic}.`
+      : `Open by asking what they are doing with ${topic}.`;
+
+    return output({ message: `${why} ${how}` });
   },
 });

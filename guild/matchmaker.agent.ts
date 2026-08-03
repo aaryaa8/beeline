@@ -1,18 +1,19 @@
 /**
- * Guild.ai agent: matchmaker.
+ * Guild.ai agent: matchmaker (real @guildai/agents-sdk).
  *
- * Decides WHO only. All graph traversal happens in the RocketRide pipeline
- * against FalkorDB; this agent receives the gated candidates (each already
- * carrying its complements, shared topics, affinity, and warm-intro path) and
- * picks the single best introduction. It does NOT write the message: that is the
- * icebreaker's job, so the division of labour between specialists is real.
+ * A deterministic Guild `agent()` (not an llmAgent): it decides WHO to introduce
+ * and nothing else. All graph traversal happens upstream in the RocketRide
+ * pipeline against FalkorDB; this agent receives the already-gated candidates
+ * (each carrying its complements, shared topics, affinity, and warm-intro path)
+ * and picks the single best one by an intent-first score. It never writes the
+ * message: that is the icebreaker's job, so the division of labour is real.
  *
- * Mirrors matchmaker_local in ../src/overlap/agents.py exactly. Nothing crosses
- * the language boundary except JSON.
+ * Deterministic on purpose. A reproducible choice you can explain in one line
+ * beats a model that picks differently each run, and it needs no model access.
  *
- * Deploy:  guild agent save && guild agent publish
+ * Publish:  see guild/publish.sh  (guild agent init -> save -> publish)
  */
-import { agent } from "@guildai/agents-sdk";
+import { agent, output } from "@guildai/agents-sdk";
 import { z } from "zod";
 
 const WarmIntro = z
@@ -36,17 +37,7 @@ const Candidate = z.object({
   warm_intro: WarmIntro,
 });
 
-const Input = z.object({
-  person: z.object({
-    id: z.string(),
-    name: z.string(),
-    role: z.string().nullable(),
-    interests: z.array(z.string()),
-  }),
-  candidates: z.array(Candidate),
-});
-
-const Output = z.object({
+const Proposal = z.object({
   from_id: z.string(),
   from_name: z.string(),
   to_id: z.string(),
@@ -55,7 +46,7 @@ const Output = z.object({
   shared_topics: z.array(z.string()),
   complements: z.array(z.string()),
   specific_topics: z.array(z.string()),
-  connector: z.any().nullable(),
+  connector: WarmIntro,
   confidence: z.number(),
 });
 
@@ -63,10 +54,12 @@ const Output = z.object({
 const GENERIC = new Set([
   "ai", "tech", "technology", "startups", "software", "coding", "llm", "llms",
 ]);
-
 const specific = (topics: string[]) => topics.filter((t) => !GENERIC.has(t));
 
-// Intent-first score: 2.0*complements + 1.0*specific + affinity + (0.5 if warm).
+// Intent-first score: 2.0*complements + 1.0*specific_shared + affinity + (0.5 if warm).
+// Complements dominate because people come to rooms with asks and offers, not
+// just interests. A warm-intro path is worth half a shared interest: an intro
+// you can act on beats one you cannot.
 const score = (c: z.infer<typeof Candidate>) =>
   2.0 * c.complements.length +
   1.0 * specific(c.shared_topics).length +
@@ -74,14 +67,26 @@ const score = (c: z.infer<typeof Candidate>) =>
   (c.warm_intro ? 0.5 : 0);
 
 export default agent({
-  name: "matchmaker",
-  description: "Picks the single best person to introduce. Decides who, not how.",
-  input: Input,
-  output: Output,
-
-  async run({ input }) {
+  description:
+    "Picks the single best person to introduce someone to, intent-first. Decides who, not how.",
+  inputSchema: z.object({
+    person: z.object({
+      id: z.string(),
+      name: z.string(),
+      role: z.string().nullable(),
+      interests: z.array(z.string()),
+    }).describe("The person we are finding a match for"),
+    candidates: z.array(Candidate).describe(
+      "Pre-gated candidates from the memory graph, each with complements/affinity/warm_intro",
+    ),
+  }),
+  // `selected` is null when there is no open candidate with a real reason.
+  outputSchema: z.object({ selected: Proposal.nullable() }),
+  stateSchema: z.object({}),
+  tools: {},
+  start: async (input) => {
     const { person, candidates } = input;
-    if (candidates.length === 0) return null;
+    if (candidates.length === 0) return output({ selected: null });
 
     const best = [...candidates].sort((a, b) => score(b) - score(a))[0];
     const spec = specific(best.shared_topics);
@@ -91,17 +96,19 @@ export default agent({
       0.4 + 0.2 * best.complements.length + 0.1 * spec.length + (connector ? 0.15 : 0),
     );
 
-    return {
-      from_id: person.id,
-      from_name: person.name,
-      to_id: best.id,
-      to_name: best.name,
-      to_role: best.role,
-      shared_topics: best.shared_topics,
-      complements: best.complements,
-      specific_topics: spec,
-      connector,
-      confidence: Math.round(confidence * 100) / 100,
-    };
+    return output({
+      selected: {
+        from_id: person.id,
+        from_name: person.name,
+        to_id: best.id,
+        to_name: best.name,
+        to_role: best.role,
+        shared_topics: best.shared_topics,
+        complements: best.complements,
+        specific_topics: spec,
+        connector,
+        confidence: Math.round(confidence * 100) / 100,
+      },
+    });
   },
 });
