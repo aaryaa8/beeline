@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Beeline — floor 16, live</title>
+<link rel="stylesheet" href="fonts/nunito.css" />
+<link rel="stylesheet" href="style.css" />
+<script>try{document.documentElement.dataset.theme=localStorage.getItem('beeline-theme')||'light';}catch(e){document.documentElement.dataset.theme='light';}</script>
+<script>document.documentElement.setAttribute('data-static','1');</script>
+<style>
+  html[data-static] #qr, html[data-static] #btn-config, html[data-static] #btn-live,
+  html[data-static] #meta, html[data-static] #btn-move, html[data-static] #btn-recharge,
+  html[data-static] #btn-intro, html[data-static] #btn-demo { display:none !important; }
+  #static-banner {
+    position: fixed; left: 50%; transform: translateX(-50%); top: 16px; z-index: 50;
+    background: var(--panel); color: var(--text); border: 1px solid var(--line);
+    border-radius: 999px; padding: 7px 15px; font-size: 13px; font-weight: 700;
+    box-shadow: 0 8px 24px var(--shadow); display: flex; gap: 10px; align-items: center;
+    font-family: "Nunito", system-ui, sans-serif;
+  }
+  #static-banner .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--open); box-shadow: 0 0 8px var(--open); }
+  #static-banner a { color: var(--accent); text-decoration: none; }
+  @media (max-width: 900px){ #static-banner { top: 8px; font-size: 12px; } }
+</style>
+</head>
+<body>
+<div id="static-banner"><span class="dot"></span><span>Beeline · auto-playing demo</span><a href="https://github.com/aaryaa8/beeline" target="_blank" rel="noopener">code + live app &#8599;</a></div>
+
+<!-- ============ MAP : the headline ============ -->
+<div id="map">
+  <canvas id="floor"></canvas>
+
+  <div id="title">
+    <div class="brand">
+      <h1>Beeline</h1>
+      <span class="tag">FRONTIER TOWER · FLOOR 16</span>
+    </div>
+    <p>The room's live memory. It draws you a path to the person you should meet.</p>
+  </div>
+
+  <div id="topright">
+    <button id="btn-theme" title="Switch to dark" aria-label="Switch theme">&#9790;</button>
+    <div id="mode-badge">source <b id="mode-label">mock</b></div>
+  </div>
+
+  <!-- match card (money-shot narration), populated on a delivered intro -->
+  <div id="matchcard">
+    <div class="kicker">Beeline · go this way</div>
+    <div class="head" id="mc-head"></div>
+    <div class="msg" id="mc-msg"></div>
+    <div class="why" id="mc-why"></div>
+    <div class="match" id="mc-match"></div>
+    <div class="route" id="mc-route"></div>
+  </div>
+
+  <div id="legend">
+    <div class="k"><span class="swatch" style="color:var(--open);background:var(--open)"></span>open<span class="sub">routable</span></div>
+    <div class="k"><span class="swatch" style="color:var(--heads);background:var(--heads)"></span>heads-down</div>
+    <div class="k"><span class="swatch" style="color:var(--recharge);background:var(--recharge)"></span>recharging</div>
+    <div class="k"><span class="swatch" style="color:var(--flow);background:var(--flow)"></span>in-flow</div>
+  </div>
+
+  <div id="qr">
+    <div id="qr-slot"></div>
+    <div class="cap">Scan to join</div>
+    <div class="url" id="qr-url">/join</div>
+  </div>
+
+  <!-- guided, self-narrating demo overlay (lower-third captions) -->
+  <div id="guide" hidden>
+    <div class="guide-inner">
+      <div class="guide-top">
+        <span class="guide-kicker">Guided demo</span>
+        <span class="guide-step" id="guide-step"></span>
+      </div>
+      <div class="guide-cap" id="guide-cap" aria-live="polite"></div>
+      <div class="guide-bar"><div class="guide-bar-fill" id="guide-bar-fill"></div></div>
+      <div class="guide-controls">
+        <button id="guide-restart" class="guide-btn">Restart</button>
+        <button id="guide-skip" class="guide-btn">Skip</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ SIDE PANEL : agents + intros ============ -->
+<div id="side">
+  <div id="controls">
+    <button class="primary cta" id="btn-fill">See it in action</button>
+    <button id="btn-demo">Fill the room</button>
+    <button id="btn-move">Move someone</button>
+    <button id="btn-recharge">Tap recharging</button>
+    <button id="btn-intro">Send a beeline</button>
+    <button id="btn-config">Configure space</button>
+    <button class="ghost" id="btn-reset">Reset</button>
+  </div>
+  <div id="meta">
+    <span class="chip-meta">mode <b id="meta-mode">mock</b></span>
+    <button id="btn-live" class="ghost" style="padding:3px 9px;font-size:11px;">use live stream</button>
+  </div>
+
+  <div id="counters">
+    <div class="counter"><b id="n-people">0</b><span>people</span></div>
+    <div class="counter"><b id="n-open">0</b><span>open</span></div>
+    <div class="counter"><b id="n-met">0</b><span>met</span></div>
+    <div class="counter"><b id="n-intros">0</b><span>beelines</span></div>
+  </div>
+
+  <div class="section" id="traces">
+    <h2>Agent activity <span class="count" id="trace-count"></span></h2>
+    <div class="scroll" id="trace-list"><div class="empty">Waiting for the first event.</div></div>
+  </div>
+
+  <div class="section" id="intros">
+    <h2>Introductions delivered <span class="count" id="intro-count"></span></h2>
+    <div class="scroll" id="intro-list"><div class="empty">None yet.</div></div>
+  </div>
+</div>
+
+<!-- ============ CONFIGURE SPACE : drawer ============ -->
+<div id="cfg-scrim" hidden></div>
+<aside id="cfg" hidden aria-label="Configure space">
+  <div class="cfg-head">
+    <div>
+      <h2>Configure space</h2>
+      <p>Set up the map for wherever you are deploying it.</p>
+    </div>
+    <button id="cfg-close" class="ghost" aria-label="Close">Close</button>
+  </div>
+
+  <div class="cfg-body">
+    <section class="cfg-sec">
+      <h3>Areas</h3>
+      <p class="cfg-note">These are the areas the floor plan lays out. Rename, reorder, remove, or add up to eight, then apply.</p>
+      <div id="cfg-zones"></div>
+      <div class="cfg-row-actions">
+        <button id="cfg-add">Add area</button>
+        <button id="cfg-apply" class="primary">Apply areas</button>
+      </div>
+    </section>
+
+    <section class="cfg-sec">
+      <h3>Scan the room</h3>
+      <p class="cfg-note">Take or choose a photo of the space. Beeline suggests areas and landmarks you can apply.</p>
+      <label class="cfg-file">
+        <input type="file" id="cfg-scan-file" accept="image/*" capture="environment" />
+        <span>Choose or take a photo</span>
+      </label>
+      <p class="cfg-note cfg-scan-note" id="cfg-scan-note" hidden>Camera needs the shared https link; you can still choose a photo.</p>
+      <div id="cfg-scan-out"></div>
+    </section>
+
+    <section class="cfg-sec">
+      <h3>Optimize the room</h3>
+      <p class="cfg-note">Reads the live room and suggests moves that turn shared interests into introductions.</p>
+      <button id="cfg-optimize">Get suggestions</button>
+      <div id="cfg-opt-out"></div>
+    </section>
+  </div>
+</aside>
+
+<script src="app.js"></script>
+<script>setTimeout(function(){var b=document.getElementById('btn-fill'); if(b) b.click();}, 2200);</script>
+</body>
+</html>
