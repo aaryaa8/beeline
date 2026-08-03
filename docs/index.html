@@ -25,7 +25,7 @@
 </style>
 </head>
 <body>
-<div id="static-banner"><span class="dot"></span><span>Beeline · auto-playing demo</span><a href="https://github.com/aaryaa8/beeline" target="_blank" rel="noopener">code + live app &#8599;</a></div>
+<div id="static-banner"><span class="dot"></span><span>Beeline &middot; auto-playing demo</span><a href="https://github.com/aaryaa8/beeline" target="_blank" rel="noopener">code + live app &#8599;</a></div>
 
 <!-- ============ MAP : the headline ============ -->
 <div id="map">
@@ -36,7 +36,7 @@
       <h1>Beeline</h1>
       <span class="tag">FRONTIER TOWER · FLOOR 16</span>
     </div>
-    <p>The room's live memory. It draws you a path to the person you should meet.</p>
+    <p>In a room full of people you should meet, you talk to whoever is nearby and miss the ones you came for. Beeline is the room's memory and matchmaker: it knows who is here and what they need, and walks you to the right person.</p>
   </div>
 
   <div id="topright">
@@ -67,16 +67,16 @@
     <div class="url" id="qr-url">/join</div>
   </div>
 
-  <!-- guided, self-narrating demo overlay (lower-third captions) -->
+  <!-- guided, self-narrating demo — a full-width bar pinned to the bottom -->
   <div id="guide" hidden>
+    <div class="guide-bar"><div class="guide-bar-fill" id="guide-bar-fill"></div></div>
     <div class="guide-inner">
-      <div class="guide-top">
+      <div class="guide-main">
         <span class="guide-kicker">Guided demo</span>
-        <span class="guide-step" id="guide-step"></span>
+        <div class="guide-cap" id="guide-cap" aria-live="polite"></div>
       </div>
-      <div class="guide-cap" id="guide-cap" aria-live="polite"></div>
-      <div class="guide-bar"><div class="guide-bar-fill" id="guide-bar-fill"></div></div>
-      <div class="guide-controls">
+      <div class="guide-side">
+        <span class="guide-step" id="guide-step"></span>
         <button id="guide-restart" class="guide-btn">Restart</button>
         <button id="guide-skip" class="guide-btn">Skip</button>
       </div>
@@ -86,6 +86,19 @@
 
 <!-- ============ SIDE PANEL : agents + intros ============ -->
 <div id="side">
+  <div id="howitworks">
+    <div class="hiw-title">How it works</div>
+    <ol class="hiw-steps">
+      <li><span class="hiw-n">1</span><span>Check in with what you are looking for and what you can offer.</span></li>
+      <li><span class="hiw-n">2</span><span>Beeline finds who you should meet, and why.</span></li>
+      <li><span class="hiw-n">3</span><span>It draws you a path: go here, say hi to a mutual on the way.</span></li>
+    </ol>
+    <div class="hiw-notes">
+      <div class="hiw-note">Set up your own venue: scan the room or type your areas.</div>
+      <div class="hiw-note roadmap"><span class="hiw-tag">Roadmap</span>Sign in enriches your profile from LinkedIn to understand your background and intent.</div>
+    </div>
+  </div>
+
   <div id="controls">
     <button class="primary cta" id="btn-fill">See it in action</button>
     <button id="btn-demo">Fill the room</button>
@@ -124,7 +137,7 @@
   <div class="cfg-head">
     <div>
       <h2>Configure space</h2>
-      <p>Set up the map for wherever you are deploying it.</p>
+      <p>Beeline works anywhere. Set up your own venue: scan the room with a photo, or type your own areas.</p>
     </div>
     <button id="cfg-close" class="ghost" aria-label="Close">Close</button>
   </div>

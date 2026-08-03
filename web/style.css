@@ -209,49 +209,50 @@ body {
 #matchcard .route b { color: var(--text); font-weight: 600; }
 
 /* ------------------------------------------------------------- *
- * GUIDED DEMO — self-narrating lower-third captions
- * Dark banner + white text so it stays legible on the light map
- * and in a screen recording, regardless of theme.
+ * GUIDED DEMO — a full-width bar pinned to the bottom of the viewport.
+ * It never covers the floor plan's areas or people. Dark banner + white
+ * text so captions stay legible on the light map and in a screen
+ * recording, in both themes.
  * ------------------------------------------------------------- */
 #guide {
-  position: absolute; left: 50%; bottom: 30px; transform: translateX(-50%);
-  z-index: 6; width: min(620px, 60vw); pointer-events: none;
-}
-#guide[hidden] { display: none; }
-#guide .guide-inner {
-  background: rgba(18,19,26,.92); color: #fff;
-  border: 1px solid rgba(255,216,132,.28); border-radius: 14px;
-  padding: 13px 18px 12px; box-shadow: 0 16px 44px rgba(0,0,0,.42);
-  backdrop-filter: blur(6px);
-  opacity: 0; transform: translateY(10px);
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
+  background: rgba(16,17,24,.95); color: #fff;
+  border-top: 1px solid rgba(255,216,132,.34);
+  box-shadow: 0 -10px 34px rgba(0,0,0,.38);
+  backdrop-filter: blur(8px);
+  opacity: 0; transform: translateY(100%);
   transition: opacity .35s ease, transform .35s ease;
+  pointer-events: none;
 }
-#guide.show .guide-inner { opacity: 1; transform: translateY(0); pointer-events: auto; }
-.guide-top {
-  display: flex; justify-content: space-between; align-items: center;
-  margin-bottom: 6px;
+#guide.show { opacity: 1; transform: translateY(0); pointer-events: auto; }
+#guide[hidden] { display: none; }
+.guide-bar {
+  height: 3px; background: rgba(255,255,255,.14); overflow: hidden;
 }
+.guide-bar-fill {
+  height: 100%; width: 0%;
+  background: linear-gradient(90deg, #f5b544, #ffd884);
+}
+.guide-inner {
+  display: flex; align-items: center; gap: 24px;
+  max-width: 1500px; margin: 0 auto; padding: 12px 26px;
+}
+.guide-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .guide-kicker {
   font-size: 10px; letter-spacing: .16em; text-transform: uppercase;
   color: #ffd884; font-weight: 700;
 }
-.guide-step { font-size: 11px; color: rgba(255,255,255,.6); font-variant-numeric: tabular-nums; }
 .guide-cap {
-  font-size: 18px; line-height: 1.4; font-weight: 600; color: #fff;
-  min-height: 2.6em; display: flex; align-items: center;
+  font-size: 19px; line-height: 1.34; font-weight: 600; color: #fff;
 }
-.guide-bar {
-  height: 4px; border-radius: 4px; background: rgba(255,255,255,.14);
-  overflow: hidden; margin-top: 10px;
+.guide-side { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.guide-step {
+  font-size: 12px; color: rgba(255,255,255,.62);
+  font-variant-numeric: tabular-nums; margin-right: 2px;
 }
-.guide-bar-fill {
-  height: 100%; width: 0%; border-radius: 4px;
-  background: linear-gradient(90deg, #f5b544, #ffd884);
-}
-.guide-controls { display: flex; gap: 8px; margin-top: 11px; justify-content: flex-end; }
 .guide-btn {
   font: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer;
-  padding: 6px 14px; border-radius: 8px;
+  padding: 7px 15px; border-radius: 8px;
   background: rgba(255,255,255,.1); color: #fff;
   border: 1px solid rgba(255,255,255,.22);
   transition: background .15s ease, border-color .15s ease;
@@ -259,7 +260,17 @@ body {
 .guide-btn:hover { background: rgba(255,255,255,.2); border-color: rgba(255,216,132,.5); }
 #guide-restart { background: rgba(245,181,68,.9); color: #3a2b06; border-color: rgba(245,181,68,.9); }
 #guide-restart:hover { background: #ffd884; }
-@media (max-width: 900px) { #guide { width: 86vw; bottom: 16px; } .guide-cap { font-size: 16px; } }
+
+/* lift the corner overlays clear of the bar while the demo runs */
+#qr, #legend { transition: bottom .3s ease; }
+body.guiding #qr, body.guiding #legend { bottom: 104px; }
+
+@media (max-width: 900px) {
+  .guide-inner { gap: 14px; padding: 10px 16px; }
+  .guide-cap { font-size: 15.5px; }
+  .guide-btn { padding: 6px 11px; font-size: 12px; }
+  body.guiding #qr, body.guiding #legend { bottom: 118px; }
+}
 
 /* scan robustness note (camera needs https) */
 .cfg-scan-note {
@@ -276,6 +287,36 @@ body {
   border-left: 1px solid var(--line);
   display: flex; flex-direction: column; overflow: hidden;
 }
+
+/* "How it works" — a light, scannable strip so a remote judge gets the
+   flow with no one narrating. Always visible, not only during the demo. */
+#howitworks {
+  padding: 15px 16px 14px; border-bottom: 1px solid var(--line);
+  background: var(--panel-2);
+}
+.hiw-title {
+  font-size: 11px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .1em; color: var(--dim); margin-bottom: 9px;
+}
+.hiw-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
+.hiw-steps li { display: flex; align-items: flex-start; gap: 9px; font-size: 13px; line-height: 1.4; color: var(--text); }
+.hiw-n {
+  flex: 0 0 auto; width: 19px; height: 19px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 800; margin-top: 1px;
+  background: rgba(245,181,68,.18); color: var(--open);
+  border: 1px solid rgba(245,181,68,.4);
+}
+.hiw-notes { margin-top: 11px; display: flex; flex-direction: column; gap: 6px; }
+.hiw-note { font-size: 11.5px; line-height: 1.45; color: var(--dim); }
+.hiw-note.roadmap { color: var(--dim-2); }
+.hiw-tag {
+  display: inline-block; margin-right: 6px; padding: 1px 7px; border-radius: 5px;
+  font-size: 9.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--chip-blue-fg); background: var(--chip-blue-bg); border: 1px solid var(--chip-blue-border);
+  vertical-align: 1px;
+}
+
 #controls { padding: 16px 16px 12px; border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 8px; }
 button {
   font: inherit; font-size: 13px; padding: 8px 13px; border-radius: 8px; cursor: pointer;

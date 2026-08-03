@@ -842,6 +842,27 @@ const MOCK_TRACE_FEEDBACK = {
     { step: 'empath', detail: 'downweight Dev + similar; next match shifts', status: 'approved' },
   ],
 };
+// a second, different introduction — someone who OFFERS exactly what another
+// person is LOOKING FOR, so viewers see the match variety.
+const MOCK_OUTBOX_2 = {
+  at: Date.now(), to: 'Grace', to_id: 'a11', about: 'Omar', about_id: 'a8',
+  message: 'Omar is a data scientist who has shipped the growth analytics you are trying to stand up. Ask him how he sized the first funnel.',
+  why: 'You are looking for analytics help, and that is exactly what Omar offers.',
+  connector: { connector_id: 'a9', connector_name: 'Tara', via_topics: ['growth'] },
+  route: { target_zone: 'Cafe', hops: [{ id: 'a9', name: 'Tara', zone: 'Cafe', reason: 'knows Omar' }] },
+  match: { complements: ['offers: growth analytics'], shared_topics: ['retrieval'] },
+};
+const MOCK_TRACE_DELIVER_2 = {
+  event: { type: 'checkin', payload: { id: 'a8', name: 'Omar' } }, ms: 39,
+  steps: [
+    { step: 'memory.write', detail: 'persisted check-in for Omar (Cafe, open)' },
+    { step: 'matchmaker', detail: 'best of 4: Grace needs analytics, Omar offers it' },
+    { step: 'empath', detail: 'Grace and Omar both open, cleared', status: 'approved' },
+    { step: 'icebreaker', detail: 'opener written, names the analytics ask + Tara' },
+    { step: 'router', detail: 'route to Cafe via Tara (knows Omar)' },
+    { step: 'action', detail: 'beeline delivered to Grace' },
+  ],
+};
 
 function mockFill() {
   doReset();
@@ -874,6 +895,18 @@ function mockRecharge() {
 function mockIntro() {
   addTrace(MOCK_TRACE_DELIVER);
   handleOutbox({ ...MOCK_OUTBOX, at: Date.now() });
+  stats.met++; setCounters();
+}
+// deliver the first intro's PATH only (its agent trace is shown a beat earlier
+// in the guided demo, so this avoids adding the trace twice).
+function mockDeliverPath() {
+  handleOutbox({ ...MOCK_OUTBOX, at: Date.now() });
+  stats.met++; setCounters();
+}
+// a second, distinct delivered intro (trace + path together).
+function mockIntro2() {
+  addTrace(MOCK_TRACE_DELIVER_2);
+  handleOutbox({ ...MOCK_OUTBOX_2, at: Date.now() });
   stats.met++; setCounters();
 }
 
@@ -911,26 +944,34 @@ let guideAutoTimer = null;
 // [atMs, caption, action] — the caption describes exactly what the action does.
 function guideBeats() {
   return [
-    [0,     'People check in live. Each arrival is its own real-time event.',
-            () => mockFill()],
-    [3400,  'It remembers who is here and what each person needs versus offers.',
+    [0,     'The problem: in a room of strangers, you meet whoever is nearby and miss the person you came for.',
             null],
-    [6800,  'Four agents decide who should meet whom. One just vetoed a match for being too generic.',
-            () => addTrace(MOCK_TRACE_VETO)],
-    [10200, 'As people move around, the live map keeps track of them across the floor.',
+    [4200,  'People check in with what they are looking for and what they can offer. Each check-in is a live event.',
+            () => mockFill()],
+    [8400,  'On the roadmap, signing in with LinkedIn fills this in from your background and recent work, so you barely type.',
+            null],
+    [12400, 'Beeline remembers everyone and matches on need versus offer, not just shared interests.',
             () => { mockMove(); setTimeout(() => { if (guideActive) mockMove(); }, 800); }],
-    [13600, 'Sofia is recharging, so it holds her introduction until she is ready.',
+    [16400, 'Four specialist agents decide who you should meet, and why.',
+            () => addTrace(MOCK_TRACE_DELIVER)],
+    [20400, 'It draws you a physical path: go here, and say hi to a mutual on the way.',
+            () => mockDeliverPath()],
+    [24800, 'Here is another: someone who offers exactly what another person is looking for.',
+            () => mockIntro2()],
+    [29200, 'One agent can say no. This match shared only a generic interest, so it was vetoed.',
+            () => addTrace(MOCK_TRACE_VETO)],
+    [33200, 'Someone is recharging, so it holds the intro. Nothing is ever sensed, you tap how you feel.',
             () => mockRecharge()],
-    [17000, 'A strong match lands. It draws a path: go this way, and say hi to Chen on the route.',
-            () => mockIntro()],
-    [22000, 'A thumbs-down teaches it, so the next suggestion shifts.',
+    [37200, 'It learns from a thumbs-down and shifts the next suggestion.',
             () => { if (people.has('a7')) { people.get('a7').state = 'open'; recomputeOpen(); }
                     addTrace(MOCK_TRACE_FEEDBACK); }],
-    [26000, 'Scan the QR in the corner to add yourself to the room.',
+    [41200, 'Deploy it in any venue: scan the room with a photo, or type your own areas.',
+            null],
+    [45200, 'That is Beeline. Scan the QR to add yourself.',
             null],
   ];
 }
-const GUIDE_TOTAL = 30000;   // total run length; last caption reads to the end
+const GUIDE_TOTAL = 49800;   // total run length; last caption reads to the end
 
 function setGuideCaption(text, idx, total) {
   const cap = document.getElementById('guide-cap');
@@ -958,8 +999,12 @@ function startGuidedDemo() {
   clearGuideTimers();
   guideActive = true;
   guideStarted = true;
+  document.body.classList.add('guiding');
   const g = document.getElementById('guide');
-  if (g) { g.hidden = false; requestAnimationFrame(() => g.classList.add('show')); }
+  // Un-hide, commit the hidden base state with a forced reflow, then add
+  // .show so the slide-up transition runs. Using a reflow instead of rAF
+  // keeps the reveal reliable even when rAF is throttled.
+  if (g) { g.hidden = false; g.style.opacity = ''; g.style.transform = ''; void g.offsetWidth; g.classList.add('show'); }
   doReset();
   const beats = guideBeats();
   guideStartAt = performance.now();
@@ -979,6 +1024,7 @@ function finishGuidedDemo() {
 function stopGuidedDemo() {
   clearGuideTimers();
   guideActive = false;
+  document.body.classList.remove('guiding');
   const g = document.getElementById('guide');
   if (g) { g.classList.remove('show'); setTimeout(() => { g.hidden = true; }, 300); }
 }
