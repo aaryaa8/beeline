@@ -1,0 +1,602 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<meta name="theme-color" content="#0f1117">
+<title>Beeline — join the room</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --panel: #171a23;
+    --panel-2: #1e222e;
+    --ink: #f3f0e7;
+    --muted: #9aa0ad;
+    --line: #2a2f3c;
+    --accent: #f5b544;      /* warm honey */
+    --accent-ink: #241a05;
+    --open: #f5b544;        /* warm/bright */
+    --heads: #5b8def;       /* blue */
+    --recharge: #b98a3c;    /* dim amber */
+    --flow: #a97be0;        /* violet */
+    --good: #6fcf97;
+    --soft: #2a2f3c;
+    --radius: 16px;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    padding: 20px 16px calc(40px + env(safe-area-inset-bottom));
+    max-width: 480px;
+    margin: 0 auto;
+    min-height: 100vh;
+  }
+  h1 { font-size: 26px; margin: 4px 0 2px; letter-spacing: -0.3px; }
+  .tagline { color: var(--muted); font-size: 15px; margin: 0 0 20px; }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 18px 16px;
+    margin-bottom: 16px;
+  }
+  label { display: block; font-size: 14px; color: var(--muted); margin: 0 0 8px; font-weight: 600; }
+  .hint { font-size: 13px; color: var(--muted); font-weight: 400; margin-top: -4px; margin-bottom: 8px; }
+  input[type=text] {
+    width: 100%;
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    color: var(--ink);
+    font-size: 17px;
+    padding: 14px 14px;
+    outline: none;
+  }
+  input[type=text]:focus { border-color: var(--accent); }
+  .field { margin-bottom: 18px; }
+  .field:last-child { margin-bottom: 0; }
+
+  /* chips (interest tags) */
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .chip {
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 8px 12px;
+    font-size: 14px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .chip button {
+    background: none; border: none; color: var(--muted);
+    font-size: 16px; line-height: 1; padding: 0; cursor: pointer;
+  }
+
+  /* option button grids (zone / state / feedback) */
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .opt {
+    background: var(--panel-2);
+    border: 1.5px solid var(--line);
+    border-radius: 14px;
+    color: var(--ink);
+    font-size: 16px;
+    font-weight: 600;
+    padding: 16px 10px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color .15s, background .15s, transform .05s;
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+  }
+  .opt:active { transform: scale(0.98); }
+  .opt .sub { font-size: 12px; font-weight: 400; color: var(--muted); }
+  .opt[aria-pressed="true"] {
+    border-color: var(--accent);
+    background: #23262f;
+  }
+  .opt .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+  .st-open .dot { background: var(--open); }
+  .st-heads .dot { background: var(--heads); }
+  .st-recharge .dot { background: var(--recharge); }
+  .st-flow .dot { background: var(--flow); }
+
+  button.primary {
+    width: 100%;
+    background: var(--accent);
+    color: var(--accent-ink);
+    border: none;
+    border-radius: 14px;
+    font-size: 18px;
+    font-weight: 700;
+    padding: 17px;
+    cursor: pointer;
+    margin-top: 4px;
+  }
+  button.primary:active { transform: scale(0.99); }
+  button.primary:disabled { opacity: .55; }
+
+  button.ghost {
+    background: none;
+    border: 1px solid var(--line);
+    color: var(--muted);
+    border-radius: 12px;
+    font-size: 14px;
+    padding: 10px 14px;
+    cursor: pointer;
+  }
+
+  .toast {
+    position: fixed;
+    left: 50%; transform: translateX(-50%);
+    bottom: calc(20px + env(safe-area-inset-bottom));
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    color: var(--ink);
+    padding: 12px 18px;
+    border-radius: 999px;
+    font-size: 15px;
+    box-shadow: 0 8px 30px rgba(0,0,0,.5);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .25s, transform .25s;
+    z-index: 50;
+    max-width: 90vw;
+    text-align: center;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .toast .ok { color: var(--good); }
+  .toast .warn { color: var(--recharge); }
+
+  .hi {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 10px; margin-bottom: 8px;
+  }
+  .hi .who { font-size: 20px; font-weight: 700; }
+  .hi .badge {
+    font-size: 12px; color: var(--muted);
+    border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px;
+  }
+  .section-title { font-size: 14px; color: var(--muted); font-weight: 600; margin: 0 0 10px; text-transform: uppercase; letter-spacing: .5px; }
+  .hidden { display: none !important; }
+  .sync-note { font-size: 12px; color: var(--muted); margin-top: 10px; text-align: center; min-height: 16px; }
+  .sync-note.pending { color: var(--recharge); }
+  a.reset { color: var(--muted); font-size: 13px; text-decoration: underline; display: inline-block; margin-top: 14px; }
+</style>
+
+<h1>Beeline</h1>
+<p class="tagline">Check in, and the room starts finding people worth meeting. One tap, whenever you like.</p>
+
+<!-- ============ CHECK-IN ============ -->
+<section id="checkin">
+  <div class="card">
+    <div class="field">
+      <label for="name">Your name</label>
+      <input type="text" id="name" autocomplete="name" placeholder="First name is plenty" />
+    </div>
+
+    <div class="field">
+      <label for="tagInput">A few things you care about</label>
+      <div class="hint">Type one and press enter, or separate with commas.</div>
+      <input type="text" id="tagInput" placeholder="e.g. retrieval, hiring, climate" />
+      <div class="chips" id="chips"></div>
+    </div>
+
+    <div class="field">
+      <label for="ask">What are you looking for</label>
+      <div class="hint">One thing. It is fine to keep it loose.</div>
+      <input type="text" id="ask" placeholder="e.g. a design cofounder" />
+    </div>
+
+    <div class="field">
+      <label for="offer">What can you help with</label>
+      <div class="hint">One thing you are glad to give.</div>
+      <input type="text" id="offer" placeholder="e.g. intros to ML engineers" />
+    </div>
+
+    <div class="field">
+      <label>Where are you right now</label>
+      <div class="grid" id="zoneGrid"></div>
+    </div>
+
+    <div class="field">
+      <label>How are you feeling</label>
+      <div class="hint">You set this. Nothing is ever sensed. You can change it anytime.</div>
+      <div class="grid" id="stateGrid"></div>
+    </div>
+  </div>
+
+  <button class="primary" id="submitBtn">Join the room</button>
+  <div class="sync-note" id="checkinSync"></div>
+</section>
+
+<!-- ============ HERE NOW (after check-in) ============ -->
+<section id="here" class="hidden">
+  <div class="card">
+    <div class="hi">
+      <div class="who" id="whoName">You</div>
+      <div class="badge" id="whoState">open</div>
+    </div>
+    <p class="tagline" style="margin:0">You are in the room. Update these whenever things change.</p>
+  </div>
+
+  <div class="card">
+    <div class="section-title">I moved</div>
+    <div class="grid" id="zoneGrid2"></div>
+    <div class="sync-note" id="posSync"></div>
+  </div>
+
+  <div class="card">
+    <div class="section-title">I am feeling</div>
+    <div class="grid" id="stateGrid2"></div>
+    <div class="sync-note" id="stateSync"></div>
+  </div>
+
+  <div class="card">
+    <div class="section-title">Just met someone</div>
+    <p class="hint" style="margin-top:0">Their name or code, then how it landed. This is how Beeline learns.</p>
+    <div class="field">
+      <input type="text" id="metWho" placeholder="Who did you meet" />
+    </div>
+    <div class="grid" id="fbGrid" style="grid-template-columns:1fr 1fr 1fr; gap:8px"></div>
+    <div class="sync-note" id="fbSync"></div>
+  </div>
+
+  <div style="text-align:center">
+    <a class="reset" id="resetLink">Not you? Start over</a>
+  </div>
+</section>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  "use strict";
+
+  // ---- frozen enums (must match BUILD_SPEC 4.1 exactly) ----
+  var ZONES  = ["Window", "Coffee", "Stage", "Cafe"];
+  var STATES = ["open", "heads-down", "recharging", "in-flow"];
+  var FEEDBACK = ["clicked", "neutral", "not-for-me"];
+
+  var STATE_META = {
+    "open":       { label: "Open",       sub: "up for meeting people", cls: "st-open" },
+    "heads-down": { label: "Heads down", sub: "building, no interruptions", cls: "st-heads" },
+    "recharging": { label: "Recharging", sub: "need a minute", cls: "st-recharge" },
+    "in-flow":    { label: "In flow",    sub: "deep in it right now", cls: "st-flow" }
+  };
+  var FB_META = {
+    "clicked":     { label: "We clicked" },
+    "neutral":     { label: "It was fine" },
+    "not-for-me":  { label: "Not for me" }
+  };
+
+  var LS_ID = "beeline.id";
+  var LS_NAME = "beeline.name";
+  var LS_STATE = "beeline.state";
+  var LS_ZONE = "beeline.zone";
+  var LS_QUEUE = "beeline.queue"; // offline outbox
+
+  // ---- tiny helpers ----
+  function $(id) { return document.getElementById(id); }
+  function el(tag, cls, txt) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (txt != null) n.textContent = txt;
+    return n;
+  }
+  function get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+  function set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+  function del(k) { try { localStorage.removeItem(k); } catch (e) {} }
+
+  var toastTimer = null;
+  function toast(msg, kind) {
+    var t = $("toast");
+    t.innerHTML = "";
+    if (kind) {
+      var mark = el("span", kind === "warn" ? "warn" : "ok", kind === "warn" ? "○ " : "✓ ");
+      t.appendChild(mark);
+    }
+    t.appendChild(document.createTextNode(msg));
+    t.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { t.classList.remove("show"); }, 2600);
+  }
+
+  // ---- offline-safe POST ----
+  // Tries the network. On failure, queues the body and reports "saved locally".
+  // Returns a promise resolving to { ok, offline, data }.
+  function post(path, body) {
+    return fetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    }).then(function (r) {
+      if (!r.ok) throw new Error("http " + r.status);
+      return r.json().catch(function () { return {}; });
+    }).then(function (data) {
+      return { ok: true, offline: false, data: data || {} };
+    }).catch(function () {
+      // network down or endpoint missing: keep the intent, never lose it
+      queue(path, body);
+      return { ok: false, offline: true, data: {} };
+    });
+  }
+
+  function readQueue() {
+    try { return JSON.parse(get(LS_QUEUE) || "[]"); } catch (e) { return []; }
+  }
+  function writeQueue(q) { set(LS_QUEUE, JSON.stringify(q)); }
+  function queue(path, body) {
+    var q = readQueue();
+    q.push({ path: path, body: body, at: Date.now() });
+    // keep it bounded so a long-dead network cannot bloat storage
+    if (q.length > 50) q = q.slice(q.length - 50);
+    writeQueue(q);
+  }
+
+  // Retry the queue quietly. Checkins are skipped here (they need an id round-trip
+  // and are retried explicitly), everything else is fire-and-forget.
+  function flushQueue() {
+    var q = readQueue();
+    if (!q.length) return;
+    var keep = [];
+    var chain = Promise.resolve();
+    q.forEach(function (item) {
+      if (item.path === "/api/checkin") { keep.push(item); return; }
+      chain = chain.then(function () {
+        return fetch(item.path, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(item.body)
+        }).then(function (r) {
+          if (!r.ok) throw new Error("http " + r.status);
+        }).catch(function () { keep.push(item); });
+      });
+    });
+    chain.then(function () {
+      writeQueue(keep);
+      if (q.length && keep.length < q.length) {
+        var synced = q.length - keep.length;
+        toast(synced + " update" + (synced > 1 ? "s" : "") + " synced", "ok");
+      }
+    });
+  }
+
+  // ---- state kept in memory ----
+  var tags = [];
+  var pick = { zone: null, state: null };      // check-in selections
+  var myId = get(LS_ID);
+
+  // =========================================================
+  // CHECK-IN screen wiring
+  // =========================================================
+
+  // interest chips
+  function renderChips() {
+    var box = $("chips");
+    box.innerHTML = "";
+    tags.forEach(function (t, i) {
+      var chip = el("span", "chip");
+      chip.appendChild(document.createTextNode(t));
+      var x = el("button", null, "×");
+      x.setAttribute("aria-label", "remove " + t);
+      x.onclick = function () { tags.splice(i, 1); renderChips(); };
+      chip.appendChild(x);
+      box.appendChild(chip);
+    });
+  }
+  function addTagsFrom(str) {
+    str.split(",").forEach(function (raw) {
+      var t = raw.trim();
+      if (t && tags.indexOf(t) === -1 && tags.length < 10) tags.push(t);
+    });
+    renderChips();
+  }
+  var tagInput = $("tagInput");
+  tagInput.addEventListener("keydown", function (e) {
+    if (e.key === "Enter" || e.key === ",") {
+      e.preventDefault();
+      addTagsFrom(tagInput.value);
+      tagInput.value = "";
+    }
+  });
+  tagInput.addEventListener("blur", function () {
+    if (tagInput.value.trim()) { addTagsFrom(tagInput.value); tagInput.value = ""; }
+  });
+
+  // zone buttons (check-in)
+  function buildZoneGrid(gridId, onPick, initial) {
+    var g = $(gridId);
+    g.innerHTML = "";
+    ZONES.forEach(function (z) {
+      var b = el("button", "opt");
+      b.type = "button";
+      b.appendChild(el("span", null, z));
+      b.setAttribute("aria-pressed", z === initial ? "true" : "false");
+      b.onclick = function () {
+        Array.prototype.forEach.call(g.children, function (c) { c.setAttribute("aria-pressed", "false"); });
+        b.setAttribute("aria-pressed", "true");
+        onPick(z);
+      };
+      g.appendChild(b);
+    });
+  }
+
+  function buildStateGrid(gridId, onPick, initial) {
+    var g = $(gridId);
+    g.innerHTML = "";
+    STATES.forEach(function (s) {
+      var m = STATE_META[s];
+      var b = el("button", "opt " + m.cls);
+      b.type = "button";
+      var top = el("span");
+      top.appendChild(el("span", "dot"));
+      top.appendChild(document.createTextNode(" " + m.label));
+      b.appendChild(top);
+      b.appendChild(el("span", "sub", m.sub));
+      b.setAttribute("aria-pressed", s === initial ? "true" : "false");
+      b.onclick = function () {
+        Array.prototype.forEach.call(g.children, function (c) { c.setAttribute("aria-pressed", "false"); });
+        b.setAttribute("aria-pressed", "true");
+        onPick(s);
+      };
+      g.appendChild(b);
+    });
+  }
+
+  buildZoneGrid("zoneGrid", function (z) { pick.zone = z; }, null);
+  buildStateGrid("stateGrid", function (s) { pick.state = s; }, null);
+
+  $("submitBtn").onclick = function () {
+    // sweep any half-typed tag / ask uses raw value
+    if (tagInput.value.trim()) { addTagsFrom(tagInput.value); tagInput.value = ""; }
+
+    var name = $("name").value.trim();
+    var ask = $("ask").value.trim();
+    var offer = $("offer").value.trim();
+
+    if (!name) { toast("Add your name first", "warn"); $("name").focus(); return; }
+    if (!pick.zone) { toast("Pick where you are", "warn"); return; }
+    if (!pick.state) { toast("Pick how you are feeling", "warn"); return; }
+
+    var body = {
+      name: name,
+      interests: tags.slice(),
+      ask: ask,
+      offer: offer,
+      zone: pick.zone,
+      state: pick.state
+    };
+
+    var btn = $("submitBtn");
+    btn.disabled = true;
+    btn.textContent = "Joining…";
+
+    post("/api/checkin", body).then(function (res) {
+      btn.disabled = false;
+      btn.textContent = "Join the room";
+      if (res.ok && res.data && res.data.id) {
+        myId = res.data.id;
+        set(LS_ID, myId);
+        set(LS_NAME, name);
+        set(LS_STATE, pick.state);
+        set(LS_ZONE, pick.zone);
+        // remove the queued checkin if one snuck in
+        writeQueue(readQueue().filter(function (i) { return i.path !== "/api/checkin"; }));
+        toast("You are checked in", "ok");
+        showHere();
+      } else {
+        // offline: no id yet. Remember locally so we can still show the here-now
+        // screen; the checkin stays queued and syncs when the network returns.
+        set(LS_NAME, name);
+        set(LS_STATE, pick.state);
+        set(LS_ZONE, pick.zone);
+        $("checkinSync").textContent = "Saved on your phone. It will sync when the network is back.";
+        $("checkinSync").classList.add("pending");
+        toast("Saved on your phone, will sync", "warn");
+        showHere();
+      }
+    });
+  };
+
+  // =========================================================
+  // HERE-NOW screen wiring
+  // =========================================================
+  function showHere() {
+    $("checkin").classList.add("hidden");
+    $("here").classList.remove("hidden");
+    var name = get(LS_NAME) || "You";
+    $("whoName").textContent = name;
+    var st = get(LS_STATE) || "open";
+    $("whoState").textContent = STATE_META[st] ? STATE_META[st].label.toLowerCase() : st;
+
+    buildZoneGrid("zoneGrid2", moveZone, get(LS_ZONE));
+    buildStateGrid("stateGrid2", changeState, get(LS_STATE));
+    buildFeedback();
+    window.scrollTo(0, 0);
+    flushQueue();
+  }
+
+  function moveZone(z) {
+    set(LS_ZONE, z);
+    var note = $("posSync");
+    if (!myId) { note.textContent = "We do not have your code yet. It will move you once you sync."; note.classList.add("pending"); }
+    post("/api/position", { id: myId, zone: z }).then(function (res) {
+      if (res.offline) {
+        note.textContent = "Saved on your phone, will sync.";
+        note.classList.add("pending");
+        toast("Saved on your phone, will sync", "warn");
+      } else {
+        note.textContent = ""; note.classList.remove("pending");
+        toast("Moved to " + z, "ok");
+      }
+    });
+  }
+
+  function changeState(s) {
+    set(LS_STATE, s);
+    $("whoState").textContent = STATE_META[s] ? STATE_META[s].label.toLowerCase() : s;
+    var note = $("stateSync");
+    post("/api/state", { id: myId, state: s }).then(function (res) {
+      if (res.offline) {
+        note.textContent = "Saved on your phone, will sync.";
+        note.classList.add("pending");
+        toast("Saved on your phone, will sync", "warn");
+      } else {
+        note.textContent = ""; note.classList.remove("pending");
+        toast("Set to " + (STATE_META[s] ? STATE_META[s].label.toLowerCase() : s), "ok");
+      }
+    });
+  }
+
+  function buildFeedback() {
+    var g = $("fbGrid");
+    g.innerHTML = "";
+    FEEDBACK.forEach(function (v) {
+      var b = el("button", "opt");
+      b.type = "button";
+      b.appendChild(el("span", null, FB_META[v].label));
+      b.onclick = function () { sendFeedback(v); };
+      g.appendChild(b);
+    });
+  }
+
+  function sendFeedback(value) {
+    var who = $("metWho").value.trim();
+    var note = $("fbSync");
+    if (!who) { toast("Add who you met first", "warn"); $("metWho").focus(); return; }
+    var body = { from_id: myId, to_id: who, value: value };
+    post("/api/feedback", body).then(function (res) {
+      if (res.offline) {
+        note.textContent = "Saved on your phone, will sync.";
+        note.classList.add("pending");
+        toast("Saved on your phone, will sync", "warn");
+      } else {
+        note.textContent = ""; note.classList.remove("pending");
+        toast("Thanks, noted", "ok");
+      }
+      $("metWho").value = "";
+    });
+  }
+
+  $("resetLink").onclick = function () {
+    del(LS_ID); del(LS_NAME); del(LS_STATE); del(LS_ZONE);
+    myId = null;
+    location.reload();
+  };
+
+  // =========================================================
+  // boot: if this phone already knows who it is, skip to here-now
+  // =========================================================
+  if (myId) {
+    showHere();
+  } else if (get(LS_NAME)) {
+    // a check-in was saved offline earlier but never got an id: show here-now
+    // so the person is not stuck, and keep retrying the queued checkin
+    showHere();
+  }
+
+  // try to drain the offline queue on load and whenever the network returns
+  flushQueue();
+  window.addEventListener("online", flushQueue);
+})();
+</script>
